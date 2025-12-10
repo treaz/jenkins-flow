@@ -37,3 +37,31 @@ export async function runWorkflow(workflowPath) {
     }
     return res.json();
 }
+
+/**
+ * Fetches the current log level.
+ * @returns {Promise<{level: string}>}
+ */
+export async function fetchLogLevel() {
+    const res = await fetch(`${API_BASE}/api/settings/log-level`);
+    if (!res.ok) throw new Error('Failed to fetch log level');
+    return res.json();
+}
+
+/**
+ * Sets the log level.
+ * @param {string} level - "INFO", "DEBUG", etc.
+ * @returns {Promise<{level: string}>}
+ */
+export async function setLogLevel(level) {
+    const res = await fetch(`${API_BASE}/api/settings/log-level`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ level })
+    });
+    if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || 'Failed to set log level');
+    }
+    return res.json();
+}

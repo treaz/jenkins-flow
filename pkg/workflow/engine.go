@@ -10,6 +10,7 @@ import (
 	"github.com/treaz/jenkins-flow/pkg/config"
 	"github.com/treaz/jenkins-flow/pkg/github"
 	"github.com/treaz/jenkins-flow/pkg/jenkins"
+	"github.com/treaz/jenkins-flow/pkg/logger"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -21,22 +22,22 @@ type StepResult struct {
 }
 
 // Run executes the defined workflow, supporting both sequential and parallel steps.
-func Run(ctx context.Context, cfg *config.Config) error {
-	log.Println("Starting workflow execution...")
+func Run(ctx context.Context, cfg *config.Config, l *logger.Logger) error {
+	l.Infof("Starting workflow execution...")
 	start := time.Now()
 
 	for i, item := range cfg.Workflow {
 		if item.IsPRWait() {
 			// Execute PR wait
 			pr := item.WaitForPR
-			log.Printf("[%d/%d] Waiting for PR #%d (%s/%s) to be %s...",
+			l.Infof("[%d/%d] Waiting for PR #%d (%s/%s) to be %s...",
 				i+1, len(cfg.Workflow), pr.PRNumber, pr.Owner, pr.Repo, pr.WaitFor)
 
-			if err := runPRWait(ctx, cfg, pr); err != nil {
+			if err := runPRWait(ctx, cfg, pr, l); err != nil {
 				return fmt.Errorf("PR wait %q failed: %w", pr.Name, err)
 			}
 
-			log.Printf("[%d/%d] PR #%d is now %s. Continuing workflow...",
+			l.Infof("[%d/%d] PR #%d is now %s. Continuing workflow...",
 				i+1, len(cfg.Workflow), pr.PRNumber, pr.WaitFor)
 		} else if item.IsParallel() {
 			// Execute parallel group
@@ -44,9 +45,9 @@ func Run(ctx context.Context, cfg *config.Config) error {
 			if groupName == "" {
 				groupName = fmt.Sprintf("Parallel Group %d", i+1)
 			}
-			log.Printf("[%d/%d] Starting %s (%d steps)...", i+1, len(cfg.Workflow), groupName, len(item.Parallel.Steps))
+			l.Infof("[%d/%d] Starting %s (%d steps)...", i+1, len(cfg.Workflow), groupName, len(item.Parallel.Steps))
 
-			results, err := runParallelGroup(ctx, cfg, item.Parallel.Steps)
+			results, err := runParallelGroup(ctx, cfg, item.Parallel.Steps, l)
 			if err != nil {
 				return fmt.Errorf("parallel group %q failed: %w", groupName, err)
 			}
@@ -64,19 +65,19 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		} else {
 			// Execute single step
 			step := item.AsStep()
-			log.Printf("[Step %d/%d] Starting step %q on instance %q...", i+1, len(cfg.Workflow), step.Name, step.Instance)
+			l.Infof("[Step %d/%d] Starting step %q on instance %q...", i+1, len(cfg.Workflow), step.Name, step.Instance)
 
-			result, err := runStep(ctx, cfg, step)
+			result, err := runStep(ctx, cfg, step, l)
 			if err != nil {
 				return fmt.Errorf("step %q failed: %w", step.Name, err)
 			}
 
-			log.Printf("  -> Build finished with result: %s", result)
+			l.Infof("  -> Build finished with result: %s", result)
 			if result != "SUCCESS" {
 				return fmt.Errorf("step %q failed with result: %s", step.Name, result)
 			}
 
-			log.Printf("[Step %d/%d] Completed successfully.", i+1, len(cfg.Workflow))
+			l.Infof("[Step %d/%d] Completed successfully.", i+1, len(cfg.Workflow))
 		}
 	}
 
@@ -92,22 +93,22 @@ type WorkflowCallbacks interface {
 }
 
 // RunWithCallbacks executes the workflow with callback notifications.
-func RunWithCallbacks(ctx context.Context, cfg *config.Config, callbacks WorkflowCallbacks) error {
-	log.Println("Starting workflow execution...")
+func RunWithCallbacks(ctx context.Context, cfg *config.Config, l *logger.Logger, callbacks WorkflowCallbacks) error {
+	l.Infof("Starting workflow execution...")
 	start := time.Now()
 
 	for i, item := range cfg.Workflow {
 		if item.IsPRWait() {
 			// Execute PR wait
 			pr := item.WaitForPR
-			log.Printf("[%d/%d] Waiting for PR #%d (%s/%s) to be %s...",
+			l.Infof("[%d/%d] Waiting for PR #%d (%s/%s) to be %s...",
 				i+1, len(cfg.Workflow), pr.PRNumber, pr.Owner, pr.Repo, pr.WaitFor)
 
-			if err := runPRWait(ctx, cfg, pr); err != nil {
+			if err := runPRWait(ctx, cfg, pr, l); err != nil {
 				return fmt.Errorf("PR wait %q failed: %w", pr.Name, err)
 			}
 
-			log.Printf("[%d/%d] PR #%d is now %s. Continuing workflow...",
+			l.Infof("[%d/%d] PR #%d is now %s. Continuing workflow...",
 				i+1, len(cfg.Workflow), pr.PRNumber, pr.WaitFor)
 		} else if item.IsParallel() {
 			// Execute parallel group
@@ -115,9 +116,9 @@ func RunWithCallbacks(ctx context.Context, cfg *config.Config, callbacks Workflo
 			if groupName == "" {
 				groupName = fmt.Sprintf("Parallel Group %d", i+1)
 			}
-			log.Printf("[%d/%d] Starting %s (%d steps)...", i+1, len(cfg.Workflow), groupName, len(item.Parallel.Steps))
+			l.Infof("[%d/%d] Starting %s (%d steps)...", i+1, len(cfg.Workflow), groupName, len(item.Parallel.Steps))
 
-			results, err := runParallelGroupWithCallbacks(ctx, cfg, item.Parallel.Steps, i, callbacks)
+			results, err := runParallelGroupWithCallbacks(ctx, cfg, item.Parallel.Steps, i, l, callbacks)
 			if err != nil {
 				return fmt.Errorf("parallel group %q failed: %w", groupName, err)
 			}
@@ -135,13 +136,13 @@ func RunWithCallbacks(ctx context.Context, cfg *config.Config, callbacks Workflo
 		} else {
 			// Execute single step
 			step := item.AsStep()
-			log.Printf("[Step %d/%d] Starting step %q on instance %q...", i+1, len(cfg.Workflow), step.Name, step.Instance)
+			l.Infof("[Step %d/%d] Starting step %q on instance %q...", i+1, len(cfg.Workflow), step.Name, step.Instance)
 
 			if callbacks != nil {
 				callbacks.OnStepStart(i, 0, step.Name, "")
 			}
 
-			result, err := runStep(ctx, cfg, step)
+			result, err := runStep(ctx, cfg, step, l)
 
 			if callbacks != nil {
 				callbacks.OnStepComplete(i, 0, step.Name, result, err)
@@ -151,22 +152,22 @@ func RunWithCallbacks(ctx context.Context, cfg *config.Config, callbacks Workflo
 				return fmt.Errorf("step %q failed: %w", step.Name, err)
 			}
 
-			log.Printf("  -> Build finished with result: %s", result)
+			l.Infof("  -> Build finished with result: %s", result)
 			if result != "SUCCESS" {
 				return fmt.Errorf("step %q failed with result: %s", step.Name, result)
 			}
 
-			log.Printf("[Step %d/%d] Completed successfully.", i+1, len(cfg.Workflow))
+			l.Infof("[Step %d/%d] Completed successfully.", i+1, len(cfg.Workflow))
 		}
 	}
 
 	duration := time.Since(start)
-	log.Printf("Workflow completed successfully in %s.", duration)
+	l.Infof("Workflow completed successfully in %s.", duration)
 	return nil
 }
 
 // runStep executes a single step and returns the build result.
-func runStep(ctx context.Context, cfg *config.Config, step config.Step) (string, error) {
+func runStep(ctx context.Context, cfg *config.Config, step config.Step, l *logger.Logger) (string, error) {
 	instanceCfg, ok := cfg.Instances[step.Instance]
 	if !ok {
 		return "", fmt.Errorf("unknown instance %q", step.Instance)
@@ -177,26 +178,26 @@ func runStep(ctx context.Context, cfg *config.Config, step config.Step) (string,
 		return "", fmt.Errorf("auth error: %w", err)
 	}
 
-	client := jenkins.NewClient(instanceCfg.URL, token)
+	client := jenkins.NewClient(instanceCfg.URL, token, l)
 
 	// 1. Trigger
-	log.Printf("  -> [%s] Triggering job %s", step.Name, step.Job)
+	l.Infof("  -> [%s] Triggering job %s", step.Name, step.Job)
 	queueItemURL, err := client.TriggerJob(ctx, step.Job, step.Params)
 	if err != nil {
 		return "", fmt.Errorf("failed to trigger: %w", err)
 	}
-	log.Printf("  -> [%s] Queued. Item: %s", step.Name, queueItemURL)
+	l.Infof("  -> [%s] Queued. Item: %s", step.Name, queueItemURL)
 
 	// 2. Wait for Queue
-	log.Printf("  -> [%s] Waiting for queue...", step.Name)
+	l.Infof("  -> [%s] Waiting for queue...", step.Name)
 	buildURL, err := client.WaitForQueue(ctx, queueItemURL)
 	if err != nil {
 		return "", fmt.Errorf("failed waiting for queue: %w", err)
 	}
-	log.Printf("  -> [%s] Job started: %s", step.Name, buildURL)
+	l.Infof("  -> [%s] Job started: %s", step.Name, buildURL)
 
 	// 3. Wait for Build
-	log.Printf("  -> [%s] Waiting for completion...", step.Name)
+	l.Infof("  -> [%s] Waiting for completion...", step.Name)
 	result, err := client.WaitForBuild(ctx, buildURL)
 	if err != nil {
 		return "", fmt.Errorf("failed waiting for build: %w", err)
@@ -206,13 +207,13 @@ func runStep(ctx context.Context, cfg *config.Config, step config.Step) (string,
 }
 
 // runPRWait monitors a GitHub PR until it reaches the target state.
-func runPRWait(ctx context.Context, cfg *config.Config, pr *config.PRWait) error {
+func runPRWait(ctx context.Context, cfg *config.Config, pr *config.PRWait, l *logger.Logger) error {
 	token, err := cfg.GitHub.GetToken()
 	if err != nil {
 		return fmt.Errorf("github auth error: %w", err)
 	}
 
-	client := github.NewClient(token)
+	client := github.NewClient(token, l)
 	pollInterval := time.Duration(pr.PollSecs) * time.Second
 	if pollInterval == 0 {
 		pollInterval = 30 * time.Second
@@ -222,7 +223,7 @@ func runPRWait(ctx context.Context, cfg *config.Config, pr *config.PRWait) error
 }
 
 // runParallelGroup executes multiple steps in parallel.
-func runParallelGroup(ctx context.Context, cfg *config.Config, steps []config.Step) ([]StepResult, error) {
+func runParallelGroup(ctx context.Context, cfg *config.Config, steps []config.Step, l *logger.Logger) ([]StepResult, error) {
 	results := make([]StepResult, len(steps))
 	var resultsMu sync.Mutex
 
@@ -231,7 +232,7 @@ func runParallelGroup(ctx context.Context, cfg *config.Config, steps []config.St
 	for i, step := range steps {
 		i, step := i, step // capture loop variables
 		g.Go(func() error {
-			result, err := runStep(gctx, cfg, step)
+			result, err := runStep(gctx, cfg, step, l)
 
 			resultsMu.Lock()
 			results[i] = StepResult{
@@ -258,7 +259,7 @@ func runParallelGroup(ctx context.Context, cfg *config.Config, steps []config.St
 }
 
 // runParallelGroupWithCallbacks executes multiple steps in parallel with callback notifications.
-func runParallelGroupWithCallbacks(ctx context.Context, cfg *config.Config, steps []config.Step, itemIndex int, callbacks WorkflowCallbacks) ([]StepResult, error) {
+func runParallelGroupWithCallbacks(ctx context.Context, cfg *config.Config, steps []config.Step, itemIndex int, l *logger.Logger, callbacks WorkflowCallbacks) ([]StepResult, error) {
 	results := make([]StepResult, len(steps))
 	var resultsMu sync.Mutex
 
@@ -271,7 +272,7 @@ func runParallelGroupWithCallbacks(ctx context.Context, cfg *config.Config, step
 				callbacks.OnStepStart(itemIndex, i, step.Name, "")
 			}
 
-			result, err := runStep(gctx, cfg, step)
+			result, err := runStep(gctx, cfg, step, l)
 
 			resultsMu.Lock()
 			results[i] = StepResult{

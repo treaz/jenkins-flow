@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/treaz/jenkins-flow/pkg/logger"
 )
 
 func TestHandleListWorkflows(t *testing.T) {
@@ -35,7 +37,8 @@ func TestHandleListWorkflows(t *testing.T) {
 	}
 
 	// Initialize server
-	srv := NewServer(8080, "instances.yaml", tmpDir)
+	l := logger.New(logger.Error)
+	srv := NewServer(8080, "instances.yaml", tmpDir, l)
 
 	// Create request
 	req := httptest.NewRequest(http.MethodGet, "/api/workflows", nil)

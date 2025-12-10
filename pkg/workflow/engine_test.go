@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/treaz/jenkins-flow/pkg/config"
+	"github.com/treaz/jenkins-flow/pkg/logger"
 )
 
 // mockJenkinsServer creates a mock Jenkins server that tracks job triggers.
@@ -60,7 +61,8 @@ func TestRunStep_Success(t *testing.T) {
 		Job:      "/job/test",
 	}
 
-	result, err := runStep(context.Background(), cfg, step)
+	l := logger.New(logger.Error)
+	result, err := runStep(context.Background(), cfg, step, l)
 	if err != nil {
 		t.Fatalf("runStep failed: %v", err)
 	}
@@ -91,7 +93,8 @@ func TestRunParallelGroup_Success(t *testing.T) {
 		{Name: "Step 3", Instance: "test", Job: "/job/test"},
 	}
 
-	results, err := runParallelGroup(context.Background(), cfg, steps)
+	l := logger.New(logger.Error)
+	results, err := runParallelGroup(context.Background(), cfg, steps, l)
 	if err != nil {
 		t.Fatalf("runParallelGroup failed: %v", err)
 	}
@@ -157,7 +160,8 @@ func TestRunParallelGroup_FailFast(t *testing.T) {
 		{Name: "Step 2", Instance: "test", Job: "/job/test"},
 	}
 
-	_, err := runParallelGroup(context.Background(), cfg, steps)
+	l := logger.New(logger.Error)
+	_, err := runParallelGroup(context.Background(), cfg, steps, l)
 	if err == nil {
 		t.Fatal("expected error from runParallelGroup, got nil")
 	}
@@ -198,7 +202,8 @@ func TestRun_MixedWorkflow(t *testing.T) {
 		},
 	}
 
-	err := Run(context.Background(), cfg)
+	l := logger.New(logger.Error)
+	err := Run(context.Background(), cfg, l)
 	if err != nil {
 		t.Fatalf("Run failed: %v", err)
 	}

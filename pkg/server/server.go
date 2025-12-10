@@ -14,6 +14,7 @@ import (
 	"sync"
 
 	"github.com/treaz/jenkins-flow/pkg/config"
+	"github.com/treaz/jenkins-flow/pkg/logger"
 	"github.com/treaz/jenkins-flow/pkg/workflow"
 )
 
@@ -23,6 +24,7 @@ type Server struct {
 	instancesPath string
 	workflowsDir  string
 	state         *StateManager
+	logger        *logger.Logger
 	staticFS      fs.FS
 	mu            sync.Mutex
 	cancelFn      context.CancelFunc
@@ -34,7 +36,7 @@ type Server struct {
 var StaticFiles embed.FS
 
 // NewServer creates a new dashboard server.
-func NewServer(port int, instancesPath, workflowsDir string) *Server {
+func NewServer(port int, instancesPath, workflowsDir string, l *logger.Logger) *Server {
 	// Get the static subdirectory from embedded files
 	staticFS, err := fs.Sub(StaticFiles, "static")
 	if err != nil {
@@ -46,6 +48,7 @@ func NewServer(port int, instancesPath, workflowsDir string) *Server {
 		instancesPath: instancesPath,
 		workflowsDir:  workflowsDir,
 		state:         NewStateManager(),
+		logger:        l,
 		staticFS:      staticFS,
 	}
 }
@@ -75,6 +78,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/workflows", s.handleListWorkflows)
 	mux.HandleFunc("/api/status", s.handleStatus)
 	mux.HandleFunc("/api/run", s.handleRun)
+	mux.HandleFunc("/api/settings/log-level", s.handleLogLevel)
 
 	// Static files (Vue app)
 	if s.staticFS != nil {
@@ -202,6 +206,44 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "started"})
 }
 
+// LogLevelRequest is the request body for changing log level
+type LogLevelRequest struct {
+	Level string `json:"level"`
+}
+
+// handleLogLevel gets or sets the current log level
+func (s *Server) handleLogLevel(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		level := s.logger.GetLevel().String()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"level": level})
+		return
+	}
+
+	if r.Method == http.MethodPost {
+		var req LogLevelRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		lvl, err := logger.ParseLevel(req.Level)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Invalid log level: %v", err), http.StatusBadRequest)
+			return
+		}
+
+		s.logger.SetLevel(lvl)
+		s.logger.Infof("Log level changed to %s", lvl.String())
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"level": lvl.String()})
+		return
+	}
+
+	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+}
+
 // configToStateItems converts config workflow items to state items.
 func (s *Server) configToStateItems(cfg *config.Config) []WorkflowItemState {
 	items := make([]WorkflowItemState, len(cfg.Workflow))
@@ -245,7 +287,7 @@ func (s *Server) configToStateItems(cfg *config.Config) []WorkflowItemState {
 // runWorkflow executes the workflow and updates state.
 func (s *Server) runWorkflow(ctx context.Context, cfg *config.Config) {
 	// Create a state-aware runner
-	err := workflow.RunWithCallbacks(ctx, cfg, &workflowCallbacks{
+	err := workflow.RunWithCallbacks(ctx, cfg, s.logger, &workflowCallbacks{
 		state: s.state,
 	})
 

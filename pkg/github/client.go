@@ -5,9 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"time"
+
+	"github.com/treaz/jenkins-flow/pkg/logger"
 )
 
 const defaultPollInterval = 30 * time.Second
@@ -16,14 +17,20 @@ const defaultPollInterval = 30 * time.Second
 type Client struct {
 	Token      string
 	HTTPClient *http.Client
+	Logger     *logger.Logger
 }
 
 // NewClient creates a new GitHub API client
-func NewClient(token string) *Client {
+func NewClient(token string, l *logger.Logger) *Client {
 	return &Client{
-		Token: token,
+		Token:  token,
+		Logger: l,
 		HTTPClient: &http.Client{
 			Timeout: 30 * time.Second,
+			Transport: &logger.LoggingRoundTripper{
+				Wrapped: http.DefaultTransport,
+				Logger:  l,
+			},
 		},
 	}
 }
@@ -104,7 +111,7 @@ func (c *Client) WaitForPRStatus(ctx context.Context, owner, repo string, prNumb
 			if done {
 				return nil
 			}
-			log.Printf("  -> PR #%d: still waiting for state %q...", prNumber, targetState)
+			c.Logger.Debugf("  -> PR #%d: still waiting for state %q...", prNumber, targetState)
 		}
 	}
 }
@@ -119,7 +126,7 @@ func (c *Client) checkPRState(ctx context.Context, owner, repo string, prNumber 
 	switch targetState {
 	case "merged":
 		if pr.Merged {
-			log.Printf("  -> PR #%d is merged!", prNumber)
+			c.Logger.Infof("  -> PR #%d is merged!", prNumber)
 			return true, nil
 		}
 		// If PR is closed but not merged, it won't become merged
@@ -128,7 +135,7 @@ func (c *Client) checkPRState(ctx context.Context, owner, repo string, prNumber 
 		}
 	case "closed":
 		if pr.State == "closed" {
-			log.Printf("  -> PR #%d is closed (merged: %v)", prNumber, pr.Merged)
+			c.Logger.Infof("  -> PR #%d is closed (merged: %v)", prNumber, pr.Merged)
 			return true, nil
 		}
 	default:

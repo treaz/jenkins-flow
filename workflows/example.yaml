@@ -1,7 +1,7 @@
 name: "Example Deployment"
 workflow:
   - name: "Build AccountAPI"
-    instance: qa-global
+    instance: local
     job: "/job/account-docker-image"
     params:
       BRANCH: "main"

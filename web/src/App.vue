@@ -37,6 +37,18 @@
             <span v-else>Run Workflow</span>
           </button>
         </div>
+
+        <div class="settings-section">
+          <div class="section-title">Settings</div>
+          <div class="setting-item">
+             <label for="log-level">Log Level</label>
+             <select id="log-level" class="select-input" :value="logLevel" @change="changeLogLevel">
+               <option value="INFO">Info</option>
+               <option value="DEBUG">Debug</option>
+               <option value="TRACE">Trace</option>
+             </select>
+          </div>
+        </div>
       </aside>
       
       <div class="content-area">
@@ -61,12 +73,13 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import WorkflowView from './components/WorkflowView.vue'
 import ToastNotification from './components/ToastNotification.vue'
-import { fetchWorkflows, fetchStatus, runWorkflow } from './api/client'
+import { fetchWorkflows, fetchStatus, runWorkflow, fetchLogLevel, setLogLevel } from './api/client'
 
 const workflows = ref([])
 const selectedWorkflow = ref('')
 const currentStatus = ref(null)
 const isRunning = ref(false)
+const logLevel = ref('INFO')
 const pollTimer = ref(null)
 const toast = ref(null)
 
@@ -127,10 +140,38 @@ const triggerRun = async () => {
   }
 }
 
+const changeLogLevel = async (e) => {
+  const newLevel = e.target.value
+  try {
+    await setLogLevel(newLevel)
+    logLevel.value = newLevel
+    toast.value.add({
+      title: 'Settings Updated',
+      message: `Log level set to ${newLevel}`,
+      type: 'success'
+    })
+  } catch (err) {
+     toast.value.add({
+      title: 'Update Failed',
+      message: err.message,
+      type: 'error'
+    })
+    // Revert on failure
+    const current = await fetchLogLevel()
+    logLevel.value = current.level
+  }
+}
+
+
 onMounted(() => {
   loadWorkflows()
   updateStatus()
   
+  // Load initial log level
+  fetchLogLevel().then(data => {
+    logLevel.value = data.level
+  }).catch(err => console.error('Failed to load log level:', err))
+
   // Poll every 5 seconds
   pollTimer.value = setInterval(updateStatus, 5000)
 })
@@ -302,5 +343,32 @@ onUnmounted(() => {
 .workflow-preview h3 {
   color: var(--text-primary);
   margin-bottom: 8px;
+}
+
+.settings-section {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border-color);
+}
+
+.setting-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.setting-item label {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.select-input {
+  width: 100%;
+  padding: 8px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 14px;
 }
 </style>

@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/treaz/jenkins-flow/pkg/logger"
 )
 
 // Client handles interaction with a single Jenkins instance
@@ -16,16 +18,22 @@ type Client struct {
 	BaseURL    string
 	AuthToken  string // Can be "user:token" or just "token" (for Bearer)
 	HTTPClient *http.Client
+	Logger     *logger.Logger
 }
 
 // NewClient creates a newly configured Jenkins client
-func NewClient(baseURL, authToken string) *Client {
+func NewClient(baseURL, authToken string, l *logger.Logger) *Client {
 	return &Client{
 		BaseURL:   strings.TrimRight(baseURL, "/"),
 		AuthToken: authToken,
+		Logger:    l,
 		HTTPClient: &http.Client{
 			// Moderate timeout for API calls, but not for the polling loops themselves
 			Timeout: 30 * time.Second,
+			Transport: &logger.LoggingRoundTripper{
+				Wrapped: http.DefaultTransport,
+				Logger:  l,
+			},
 		},
 	}
 }
