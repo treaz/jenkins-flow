@@ -1,10 +1,7 @@
 workflow:
-  - name: "Build Core"
-    instance: local
-    job: "/job/core-build"
+  - name: "Build AccountAPI"
+    instance: qa-global
+    job: "/job/account-docker-image"
     params:
       BRANCH: "main"
       DEPLOY_ENV: "staging"
-  - name: "Test Integration"
-    instance: local
-    job: "/job/integration-tests"

@@ -5,7 +5,6 @@ package notifier
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"os"
 	"os/exec"
@@ -68,29 +67,11 @@ func (n *Notifier) Notify(success bool, title, message string) {
 	}
 }
 
-// sendMacOSNotification sends a desktop notification using osascript.
+// sendMacOSNotification sends a desktop notification using terminal-notifier.
 // Errors are silently ignored to prevent notification failures from breaking the CLI.
 func sendMacOSNotification(title, message string) {
-	script := fmt.Sprintf(`display notification "%s" with title "%s"`, escapeAppleScript(message), escapeAppleScript(title))
-	cmd := exec.Command("osascript", "-e", script)
+	cmd := exec.Command("terminal-notifier", "-title", title, "-message", message)
 	_ = cmd.Run() // Ignore errors - don't let notification failures break the CLI
-}
-
-// escapeAppleScript escapes special characters for AppleScript strings.
-func escapeAppleScript(s string) string {
-	// Escape backslashes first, then double quotes
-	result := ""
-	for _, r := range s {
-		switch r {
-		case '\\':
-			result += "\\\\"
-		case '"':
-			result += "\\\""
-		default:
-			result += string(r)
-		}
-	}
-	return result
 }
 
 // slackMessage represents the Slack webhook message payload.

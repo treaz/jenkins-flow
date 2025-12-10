@@ -8,7 +8,7 @@ A robust Go CLI tools to orchestrate Jenkins jobs linearly across multiple insta
 - **Linear Workflow**: Trigger jobs in a defined sequence.
 - **Robust Polling**: Waits for Queue items to start and Builds to finish.
 - **Fail Fast**: Stops immediately if a job fails.
-- **Notifications**: macOS desktop notifications on completion, with optional Slack integration.
+- **Notifications**: macOS desktop notifications via `terminal-notifier`, with optional Slack integration.
 - **Secure Auth**: Separation of concerns with `instances.yaml` (ignored) and `workflow.yaml`.
 
 ## Installation
@@ -103,7 +103,19 @@ You can create multiple workflow files (e.g., `deploy-staging.yaml`, `deploy-pro
 
 ## Notifications
 
-The CLI sends macOS desktop notifications when workflows complete (both success and failure). These work out of the box with no configuration.
+The CLI uses [`terminal-notifier`](https://github.com/julienXX/terminal-notifier) to display macOS desktop notifications when workflows complete (both success and failure).
+
+Install it with Homebrew if it is not already available on your machine:
+
+```bash
+brew install terminal-notifier
+```
+
+You can verify notifications are working with:
+
+```bash
+terminal-notifier -title "Jenkins Flow" -message "Workflow finished"
+```
 
 ### Slack Integration (Optional)
 
@@ -119,6 +131,7 @@ export SLACK_USERNAME="Jenkins Flow"
 ```
 
 To create a Slack webhook:
+
 1. Go to [Slack Apps](https://api.slack.com/apps)
 2. Create a new app (or use existing)
 3. Enable **Incoming Webhooks**
