@@ -94,6 +94,7 @@ func (w *WorkflowItem) AsStep() Step {
 }
 
 type Config struct {
+	Name      string              `yaml:"name"`
 	Instances map[string]Instance `yaml:"instances"`
 	GitHub    *GitHubConfig       `yaml:"github,omitempty"` // Global GitHub config
 	Workflow  []WorkflowItem      `yaml:"workflow"`
@@ -121,6 +122,7 @@ func Load(instancesPath, workflowPath string) (*Config, error) {
 	}
 
 	var workflowCfg struct {
+		Name     string         `yaml:"name"`
 		Workflow []WorkflowItem `yaml:"workflow"`
 	}
 	if err := yaml.Unmarshal(workflowData, &workflowCfg); err != nil {
@@ -129,6 +131,7 @@ func Load(instancesPath, workflowPath string) (*Config, error) {
 
 	// 3. Merge
 	cfg := &Config{
+		Name:      workflowCfg.Name,
 		Instances: instancesCfg.Instances,
 		GitHub:    instancesCfg.GitHub,
 		Workflow:  workflowCfg.Workflow,
@@ -139,6 +142,27 @@ func Load(instancesPath, workflowPath string) (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// ParseWorkflowMeta reads just the metadata (name) from a workflow file.
+func ParseWorkflowMeta(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("failed to read file: %w", err)
+	}
+
+	var meta struct {
+		Name string `yaml:"name"`
+	}
+	if err := yaml.Unmarshal(data, &meta); err != nil {
+		return "", fmt.Errorf("failed to parse yaml: %w", err)
+	}
+
+	if meta.Name == "" {
+		return "", fmt.Errorf("workflow missing 'name' field")
+	}
+
+	return meta.Name, nil
 }
 
 func (c *Config) validate() error {

@@ -110,30 +110,26 @@ func (s *Server) handleListWorkflows(w http.ResponseWriter, r *http.Request) {
 	// Look for workflow files in the workflows directory
 	entries, err := os.ReadDir(s.workflowsDir)
 	if err != nil {
-		// If directory doesn't exist, try current directory
-		entries, err = os.ReadDir(".")
-		if err != nil {
-			http.Error(w, "Failed to read workflows directory", http.StatusInternalServerError)
-			return
-		}
+		log.Printf("Error reading workflows directory: %v", err)
+		http.Error(w, "Failed to read workflows directory", http.StatusInternalServerError)
+		return
 	}
 
 	for _, entry := range entries {
 		name := entry.Name()
-		if !entry.IsDir() && strings.HasSuffix(name, ".yaml") && strings.Contains(name, "workflow") {
-			workflows = append(workflows, WorkflowInfo{
-				Name: strings.TrimSuffix(name, ".yaml"),
-				Path: filepath.Join(s.workflowsDir, name),
-			})
-		}
-	}
+		if !entry.IsDir() && (strings.HasSuffix(name, ".yaml") || strings.HasSuffix(name, ".yml")) {
+			fullPath := filepath.Join(s.workflowsDir, name)
 
-	// Also check for workflow.yaml in current directory if workflowsDir is different
-	if s.workflowsDir != "." {
-		if _, err := os.Stat("workflow.yaml"); err == nil {
+			// Parse the name from the file content
+			workflowName, err := config.ParseWorkflowMeta(fullPath)
+			if err != nil {
+				log.Printf("Warning: Skipping invalid workflow file %q: %v", name, err)
+				continue
+			}
+
 			workflows = append(workflows, WorkflowInfo{
-				Name: "workflow",
-				Path: "workflow.yaml",
+				Name: workflowName,
+				Path: fullPath,
 			})
 		}
 	}
@@ -179,7 +175,8 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 
 	workflowPath := req.Workflow
 	if workflowPath == "" {
-		workflowPath = "workflow.yaml"
+		http.Error(w, "Workflow path is required", http.StatusBadRequest)
+		return
 	}
 
 	// Load config

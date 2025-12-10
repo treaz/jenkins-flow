@@ -1,3 +1,4 @@
+name: "Example Deployment"
 workflow:
   - name: "Build AccountAPI"
     instance: qa-global

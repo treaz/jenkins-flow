@@ -409,3 +409,47 @@ workflow:
 		t.Error("second workflow item should not be PR Wait")
 	}
 }
+
+func TestParseWorkflowMeta(t *testing.T) {
+	// 1. Create Workflow File with name
+	content := []byte(`
+name: "My Workflow"
+workflow:
+  - name: step1
+`)
+	tmpFile, err := os.CreateTemp("", "workflow_meta_*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmpFile.Name())
+	tmpFile.Write(content)
+	tmpFile.Close()
+
+	// 2. Parse
+	name, err := ParseWorkflowMeta(tmpFile.Name())
+	if err != nil {
+		t.Fatalf("ParseWorkflowMeta failed: %v", err)
+	}
+
+	if name != "My Workflow" {
+		t.Errorf("expected name 'My Workflow', got %q", name)
+	}
+
+	// 3. Test missing name
+	contentNoName := []byte(`
+workflow:
+  - name: step1
+`)
+	tmpFileNoName, err := os.CreateTemp("", "workflow_meta_invalid_*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmpFileNoName.Name())
+	tmpFileNoName.Write(contentNoName)
+	tmpFileNoName.Close()
+
+	_, err = ParseWorkflowMeta(tmpFileNoName.Name())
+	if err == nil {
+		t.Error("expected error for missing name, got nil")
+	}
+}

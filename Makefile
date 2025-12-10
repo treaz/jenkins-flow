@@ -19,7 +19,7 @@ build: build-web
 
 ## run: Run the CLI with default configs
 run: build
-	./$(BINARY_NAME) run -instances instances.yaml -workflow workflow.yaml
+	./$(BINARY_NAME) run -instances instances.yaml -workflow workflows/example.yaml
 
 ## serve: Run the dashboard server
 serve: build
