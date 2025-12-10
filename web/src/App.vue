@@ -54,11 +54,13 @@
       </div>
     </main>
   </div>
+  <ToastNotification ref="toast" />
 </template>
 
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import WorkflowView from './components/WorkflowView.vue'
+import ToastNotification from './components/ToastNotification.vue'
 import { fetchWorkflows, fetchStatus, runWorkflow } from './api/client'
 
 const workflows = ref([])
@@ -66,6 +68,7 @@ const selectedWorkflow = ref('')
 const currentStatus = ref(null)
 const isRunning = ref(false)
 const pollTimer = ref(null)
+const toast = ref(null)
 
 const getWorkflowName = (path) => {
   const wf = workflows.value.find(w => w.path === path)
@@ -107,10 +110,20 @@ const triggerRun = async () => {
   
   try {
     await runWorkflow(selectedWorkflow.value)
+    toast.value.add({
+      title: 'Workflow Started',
+      message: `Successfully started ${getWorkflowName(selectedWorkflow.value)}`,
+      type: 'success'
+    })
     // Immediate update
     await updateStatus()
   } catch (err) {
-    alert(`Failed to start workflow: ${err.message}`)
+    toast.value.add({
+      title: 'Execution Failed',
+      message: err.message,
+      type: 'error',
+      duration: 8000
+    })
   }
 }
 
