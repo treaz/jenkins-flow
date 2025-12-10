@@ -1,3 +1,5 @@
 instances.yaml
 /jenkins-flow
 workflows/
+pkg/server/static/*
+!pkg/server/static/.gitkeep
