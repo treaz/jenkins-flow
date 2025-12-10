@@ -80,32 +80,28 @@ github:
   # token: "ghp_xxxxxxxxxxxxxxxxxxxx"
 ```
 
-2. **Define Workflow**:
-   Create a workflow file (e.g., `workflow.yaml`). You can commit this file.
+2. **Start the Server**:
 
-```yaml
-workflow:
-  - wait_for_pr:
-      name: "Wait for Release PR"
-      owner: "treaz"
-      repo: "my-app"
-      # Provide either pr_number or head_branch (but not both)
-      head_branch: "release/my-app"
-      wait_for: "merged" # or "closed"
-  - name: "Build US Backend"
-    instance: prod-us
-    job: "/job/backend/job/build"
-    params:
-      BRANCH: "main"
-      DEPLOY_ENV: "staging"
-  - name: "Deploy EU Replica"
-    instance: prod-eu
-    job: "/job/deploy/job/replica"
+```bash
+# Using Makefile
+make serve
+
+# Or directly
+./jenkins-flow -port 32567
 ```
+
+3. **Open the Dashboard**:
+
+Open your browser to `http://localhost:32567`.
+
+From the dashboard you can:
+- See all available workflows in the `workflows/` directory.
+- Trigger workflows.
+- View real-time logs and step status.
 
 ### Parallel Execution
 
-To run steps in parallel (e.g., deploying to multiple regions simultaneously), use the `parallel` block:
+To run steps in parallel (e.g., deploying to multiple regions simultaneously), use the `parallel` block in your workflow files:
 
 ```yaml
 workflow:
@@ -154,14 +150,6 @@ workflow:
 ```bash
 export JENKINS_AUTH_US="username:11xxxxxxxxxxxxxxxxxxxx"
 ```
-
-1. **Run the Flow**:
-
-```bash
-./jenkins-flow -instances instances.yaml -workflow workflow.yaml
-```
-
-You can create multiple workflow files (e.g., `deploy-staging.yaml`, `deploy-prod.yaml`) and specify which one to run using the `-workflow` flag.
 
 ### Waiting for Branch-Based PRs
 

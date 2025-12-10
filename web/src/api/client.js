@@ -65,3 +65,19 @@ export async function setLogLevel(level) {
     }
     return res.json();
 }
+
+/**
+ * Stops the currently running workflow.
+ * @returns {Promise<{status: string}>}
+ */
+export async function stopWorkflow() {
+    const res = await fetch(`${API_BASE}/api/stop`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    });
+    if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || 'Failed to stop workflow');
+    }
+    return res.json();
+}

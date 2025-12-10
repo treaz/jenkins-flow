@@ -78,6 +78,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/workflows", s.handleListWorkflows)
 	mux.HandleFunc("/api/status", s.handleStatus)
 	mux.HandleFunc("/api/run", s.handleRun)
+	mux.HandleFunc("/api/stop", s.handleStop)
 	mux.HandleFunc("/api/settings/log-level", s.handleLogLevel)
 
 	// Static files (Vue app)
@@ -206,6 +207,28 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "started"})
 }
 
+// handleStop stops a running workflow.
+func (s *Server) handleStop(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.cancelFn != nil {
+		s.cancelFn()
+		s.cancelFn = nil
+		s.logger.Infof("Workflow stop requested by user")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "stopped"})
+		return
+	}
+
+	http.Error(w, "No workflow running", http.StatusNotFound)
+}
+
 // LogLevelRequest is the request body for changing log level
 type LogLevelRequest struct {
 	Level string `json:"level"`
@@ -286,6 +309,12 @@ func (s *Server) configToStateItems(cfg *config.Config) []WorkflowItemState {
 
 // runWorkflow executes the workflow and updates state.
 func (s *Server) runWorkflow(ctx context.Context, cfg *config.Config) {
+	defer func() {
+		s.mu.Lock()
+		s.cancelFn = nil
+		s.mu.Unlock()
+	}()
+
 	// Create a state-aware runner
 	err := workflow.RunWithCallbacks(ctx, cfg, s.logger, &workflowCallbacks{
 		state: s.state,

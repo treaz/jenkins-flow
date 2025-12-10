@@ -17,21 +17,20 @@ build-web:
 build: build-web
 	go build -o $(BINARY_NAME) $(MAIN_PATH)
 
-## run: Run the CLI with default configs
-run: build
-	./$(BINARY_NAME) run -instances instances.yaml -workflow workflows/example.yaml
+## run: Run the server (alias for serve)
+run: serve
 
 ## serve: Run the dashboard server
 serve: build
-	./$(BINARY_NAME) serve
+	./$(BINARY_NAME)
 
 ## stop-server: Stop the dashboard server
 stop-server:
-	@if pgrep -f "$(BINARY_NAME) serve" >/dev/null; then \
-		pkill -f "$(BINARY_NAME) serve"; \
-		echo "Stopped $(BINARY_NAME) serve process."; \
+	@if pgrep -f "$(BINARY_NAME)" >/dev/null; then \
+		pkill -f "$(BINARY_NAME)"; \
+		echo "Stopped $(BINARY_NAME) process."; \
 	else \
-		echo "No $(BINARY_NAME) serve process found."; \
+		echo "No $(BINARY_NAME) process found."; \
 	fi
 
 ## deps: Download and tidy dependencies
