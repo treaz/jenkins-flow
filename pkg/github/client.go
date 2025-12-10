@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/treaz/jenkins-flow/pkg/logger"
@@ -43,6 +44,9 @@ type PRStatus struct {
 	MergedAt *time.Time `json:"merged_at,omitempty"`
 	Title    string     `json:"title"`
 	HTMLURL  string     `json:"html_url"`
+	Head     struct {
+		Ref string `json:"ref"`
+	} `json:"head"`
 }
 
 // GetPRStatus fetches the current status of a Pull Request
@@ -80,6 +84,58 @@ func (c *Client) GetPRStatus(ctx context.Context, owner, repo string, prNumber i
 	}
 
 	return &pr, nil
+}
+
+// FindPRByBranch locates an open PR targeting the specified branch. Matching is case-insensitive.
+// Returns an error when no PRs or multiple PRs exist for the branch.
+func (c *Client) FindPRByBranch(ctx context.Context, owner, repo, branch string) (*PRStatus, error) {
+	if branch == "" {
+		return nil, fmt.Errorf("branch name must be provided")
+	}
+
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/pulls?state=open&per_page=100", owner, repo)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+	if c.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.Token)
+	}
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("GitHub API request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GitHub API error (status %d): %s", resp.StatusCode, string(body))
+	}
+
+	var pulls []PRStatus
+	if err := json.NewDecoder(resp.Body).Decode(&pulls); err != nil {
+		return nil, fmt.Errorf("failed to decode GitHub response: %w", err)
+	}
+
+	var matches []*PRStatus
+	for i := range pulls {
+		if strings.EqualFold(pulls[i].Head.Ref, branch) {
+			matches = append(matches, &pulls[i])
+		}
+	}
+
+	switch len(matches) {
+	case 0:
+		return nil, fmt.Errorf("no open PR found for branch %q", branch)
+	case 1:
+		return matches[0], nil
+	default:
+		return nil, fmt.Errorf("multiple open PRs found for branch %q", branch)
+	}
 }
 
 // WaitForPRStatus polls until the PR reaches the target state.

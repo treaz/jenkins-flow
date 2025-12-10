@@ -343,18 +343,16 @@ github:
 	instancesFile.Close()
 
 	// 2. Create Workflow File with PR wait step
-	workflowContent := `
-workflow:
-  - wait_for_pr:
-      name: "Wait for Release"
-      owner: "treaz"
-      repo: "monitor"
-      pr_number: 42
-      wait_for: "merged"
-  - name: "Build"
-    instance: local
-    job: "/job/build"
-`
+	workflowContent := "workflow:\n" +
+		"  - wait_for_pr:\n" +
+		"      name: \"Wait for Release\"\n" +
+		"      owner: \"treaz\"\n" +
+		"      repo: \"monitor\"\n" +
+		"      pr_number: 42\n" +
+		"      wait_for: \"merged\"\n" +
+		"  - name: \"Build\"\n" +
+		"    instance: local\n" +
+		"    job: \"/job/build\"\n"
 	workflowFile, err := os.CreateTemp("", "workflow_pr_*.yaml")
 	if err != nil {
 		t.Fatal(err)
@@ -407,6 +405,130 @@ workflow:
 	// Second item: regular step
 	if cfg.Workflow[1].IsPRWait() {
 		t.Error("second workflow item should not be PR Wait")
+	}
+}
+
+func TestLoad_PRWaitWorkflow_HeadBranch(t *testing.T) {
+	instancesContent := `
+instances:
+  local:
+    url: http://localhost:8080
+    token: "user:token"
+github:
+  token: "gh-token"
+`
+	instancesFile, err := os.CreateTemp("", "instances_pr_branch_*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(instancesFile.Name())
+	instancesFile.Write([]byte(instancesContent))
+	instancesFile.Close()
+
+	workflowContent := "workflow:\n" +
+		"  - wait_for_pr:\n" +
+		"      name: \"Wait for Release Branch\"\n" +
+		"      owner: \"treaz\"\n" +
+		"      repo: \"monitor\"\n" +
+		"      head_branch: \"release/v1\"\n" +
+		"      wait_for: \"merged\"\n" +
+		"  - name: \"Build\"\n" +
+		"    instance: local\n" +
+		"    job: \"/job/build\"\n"
+	workflowFile, err := os.CreateTemp("", "workflow_pr_branch_*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(workflowFile.Name())
+	workflowFile.Write([]byte(workflowContent))
+	workflowFile.Close()
+
+	cfg, err := Load(instancesFile.Name(), workflowFile.Name())
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	if !cfg.Workflow[0].IsPRWait() {
+		t.Fatal("expected first item to be PR wait")
+	}
+	pr := cfg.Workflow[0].WaitForPR
+	if pr.HeadBranch != "release/v1" {
+		t.Fatalf("expected head_branch 'release/v1', got %q", pr.HeadBranch)
+	}
+	if pr.PRNumber != 0 {
+		t.Fatalf("expected pr_number 0, got %d", pr.PRNumber)
+	}
+}
+
+func TestValidatePRWait_MutuallyExclusiveFields(t *testing.T) {
+	instancesContent := `
+instances:
+  local:
+    url: http://localhost:8080
+    token: "user:token"
+`
+	instancesFile, err := os.CreateTemp("", "instances_pr_invalid_*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(instancesFile.Name())
+	instancesFile.Write([]byte(instancesContent))
+	instancesFile.Close()
+
+	workflowContent := "workflow:\n" +
+		"  - wait_for_pr:\n" +
+		"      name: \"Invalid Wait\"\n" +
+		"      owner: \"treaz\"\n" +
+		"      repo: \"monitor\"\n" +
+		"      pr_number: 42\n" +
+		"      head_branch: \"release/v1\"\n" +
+		"      wait_for: \"merged\"\n"
+	workflowFile, err := os.CreateTemp("", "workflow_pr_invalid_*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(workflowFile.Name())
+	workflowFile.Write([]byte(workflowContent))
+	workflowFile.Close()
+
+	_, err = Load(instancesFile.Name(), workflowFile.Name())
+	if err == nil {
+		t.Fatal("expected validation error when both pr_number and head_branch set")
+	}
+}
+
+func TestValidatePRWait_MissingIdentifiers(t *testing.T) {
+	instancesContent := `
+instances:
+  local:
+    url: http://localhost:8080
+    token: "user:token"
+`
+	instancesFile, err := os.CreateTemp("", "instances_pr_missing_*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(instancesFile.Name())
+	instancesFile.Write([]byte(instancesContent))
+	instancesFile.Close()
+
+	workflowContent := "workflow:\n" +
+		"  - wait_for_pr:\n" +
+		"      name: \"Invalid Wait\"\n" +
+		"      owner: \"treaz\"\n" +
+		"      repo: \"monitor\"\n" +
+		"      wait_for: \"merged\"\n"
+	workflowFile, err := os.CreateTemp("", "workflow_pr_missing_*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(workflowFile.Name())
+	workflowFile.Write([]byte(workflowContent))
+	workflowFile.Close()
+
+	_, err = Load(instancesFile.Name(), workflowFile.Name())
+	if err == nil {
+		t.Fatal("expected validation error when neither pr_number nor head_branch provided")
 	}
 }
 

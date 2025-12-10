@@ -30,15 +30,17 @@ func Run(ctx context.Context, cfg *config.Config, l *logger.Logger) error {
 		if item.IsPRWait() {
 			// Execute PR wait
 			pr := item.WaitForPR
-			l.Infof("[%d/%d] Waiting for PR #%d (%s/%s) to be %s...",
-				i+1, len(cfg.Workflow), pr.PRNumber, pr.Owner, pr.Repo, pr.WaitFor)
+			target := describePRTarget(pr)
+			l.Infof("[%d/%d] Waiting for %s (%s/%s) to be %s...",
+				i+1, len(cfg.Workflow), target, pr.Owner, pr.Repo, pr.WaitFor)
 
 			if err := runPRWait(ctx, cfg, pr, l); err != nil {
 				return fmt.Errorf("PR wait %q failed: %w", pr.Name, err)
 			}
 
-			l.Infof("[%d/%d] PR #%d is now %s. Continuing workflow...",
-				i+1, len(cfg.Workflow), pr.PRNumber, pr.WaitFor)
+			resolved := describeResolvedPR(pr)
+			l.Infof("[%d/%d] %s is now %s. Continuing workflow...",
+				i+1, len(cfg.Workflow), resolved, pr.WaitFor)
 		} else if item.IsParallel() {
 			// Execute parallel group
 			groupName := item.Parallel.Name
@@ -101,15 +103,17 @@ func RunWithCallbacks(ctx context.Context, cfg *config.Config, l *logger.Logger,
 		if item.IsPRWait() {
 			// Execute PR wait
 			pr := item.WaitForPR
-			l.Infof("[%d/%d] Waiting for PR #%d (%s/%s) to be %s...",
-				i+1, len(cfg.Workflow), pr.PRNumber, pr.Owner, pr.Repo, pr.WaitFor)
+			target := describePRTarget(pr)
+			l.Infof("[%d/%d] Waiting for %s (%s/%s) to be %s...",
+				i+1, len(cfg.Workflow), target, pr.Owner, pr.Repo, pr.WaitFor)
 
 			if err := runPRWait(ctx, cfg, pr, l); err != nil {
 				return fmt.Errorf("PR wait %q failed: %w", pr.Name, err)
 			}
 
-			l.Infof("[%d/%d] PR #%d is now %s. Continuing workflow...",
-				i+1, len(cfg.Workflow), pr.PRNumber, pr.WaitFor)
+			resolved := describeResolvedPR(pr)
+			l.Infof("[%d/%d] %s is now %s. Continuing workflow...",
+				i+1, len(cfg.Workflow), resolved, pr.WaitFor)
 		} else if item.IsParallel() {
 			// Execute parallel group
 			groupName := item.Parallel.Name
@@ -208,6 +212,10 @@ func runStep(ctx context.Context, cfg *config.Config, step config.Step, l *logge
 
 // runPRWait monitors a GitHub PR until it reaches the target state.
 func runPRWait(ctx context.Context, cfg *config.Config, pr *config.PRWait, l *logger.Logger) error {
+	if cfg.GitHub == nil {
+		return fmt.Errorf("github configuration is required for wait_for_pr steps")
+	}
+
 	token, err := cfg.GitHub.GetToken()
 	if err != nil {
 		return fmt.Errorf("github auth error: %w", err)
@@ -219,7 +227,48 @@ func runPRWait(ctx context.Context, cfg *config.Config, pr *config.PRWait, l *lo
 		pollInterval = 30 * time.Second
 	}
 
-	return client.WaitForPRStatus(ctx, pr.Owner, pr.Repo, pr.PRNumber, pr.WaitFor, pollInterval)
+	prNumber := pr.PRNumber
+	if prNumber == 0 && pr.HeadBranch != "" {
+		resolved, err := client.FindPRByBranch(ctx, pr.Owner, pr.Repo, pr.HeadBranch)
+		if err != nil {
+			return fmt.Errorf("failed to resolve branch %q: %w", pr.HeadBranch, err)
+		}
+		prNumber = resolved.Number
+		pr.PRNumber = prNumber
+		l.Infof("  -> Resolved branch %q to PR #%d (%s)", pr.HeadBranch, prNumber, resolved.HTMLURL)
+	}
+
+	if prNumber == 0 {
+		return fmt.Errorf("no PR number resolved for wait step %q", pr.Name)
+	}
+
+	return client.WaitForPRStatus(ctx, pr.Owner, pr.Repo, prNumber, pr.WaitFor, pollInterval)
+}
+
+func describePRTarget(pr *config.PRWait) string {
+	if pr == nil {
+		return "PR"
+	}
+	if pr.PRNumber > 0 {
+		return fmt.Sprintf("PR #%d", pr.PRNumber)
+	}
+	if pr.HeadBranch != "" {
+		return fmt.Sprintf("PR on branch %q", pr.HeadBranch)
+	}
+	return "PR"
+}
+
+func describeResolvedPR(pr *config.PRWait) string {
+	if pr == nil {
+		return "PR"
+	}
+	if pr.PRNumber > 0 {
+		return fmt.Sprintf("PR #%d", pr.PRNumber)
+	}
+	if pr.HeadBranch != "" {
+		return fmt.Sprintf("PR on branch %q", pr.HeadBranch)
+	}
+	return "PR"
 }
 
 // runParallelGroup executes multiple steps in parallel.

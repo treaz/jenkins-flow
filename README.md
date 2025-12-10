@@ -89,7 +89,8 @@ workflow:
       name: "Wait for Release PR"
       owner: "treaz"
       repo: "my-app"
-      pr_number: 123
+      # Provide either pr_number or head_branch (but not both)
+      head_branch: "release/my-app"
       wait_for: "merged" # or "closed"
   - name: "Build US Backend"
     instance: prod-us
@@ -142,24 +143,29 @@ workflow:
 ```
 
 **Parallel Behavior:**
+
 - All steps within a `parallel` block run concurrently
 - The workflow waits for **all** parallel steps to complete **successfully** before proceeding
 - If any step fails, remaining parallel steps are cancelled (fail-fast)
 - Parallel groups can be mixed with sequential steps
 
-3. **Set Environment Variables** (if using `auth_env`):
+1. **Set Environment Variables** (if using `auth_env`):
 
 ```bash
 export JENKINS_AUTH_US="username:11xxxxxxxxxxxxxxxxxxxx"
 ```
 
-4. **Run the Flow**:
+1. **Run the Flow**:
 
 ```bash
 ./jenkins-flow -instances instances.yaml -workflow workflow.yaml
 ```
 
 You can create multiple workflow files (e.g., `deploy-staging.yaml`, `deploy-prod.yaml`) and specify which one to run using the `-workflow` flag.
+
+### Waiting for Branch-Based PRs
+
+The `wait_for_pr` step can resolve a PR dynamically using `head_branch`. The branch comparison is case-insensitive. If multiple open PRs exist for the same branch, the step fails fast so the workflow does not continue with ambiguous state.
 
 ## Notifications
 

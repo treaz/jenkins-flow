@@ -44,12 +44,13 @@ func (g GitHubConfig) GetToken() (string, error) {
 
 // PRWait represents a wait condition for a GitHub PR
 type PRWait struct {
-	Name     string `yaml:"name"`
-	Owner    string `yaml:"owner"`               // GitHub org/user
-	Repo     string `yaml:"repo"`                // Repository name
-	PRNumber int    `yaml:"pr_number"`           // PR number to monitor
-	WaitFor  string `yaml:"wait_for"`            // Target state: "merged", "closed"
-	PollSecs int    `yaml:"poll_secs,omitempty"` // Poll interval (default: 30)
+	Name       string `yaml:"name"`
+	Owner      string `yaml:"owner"`                 // GitHub org/user
+	Repo       string `yaml:"repo"`                  // Repository name
+	PRNumber   int    `yaml:"pr_number"`             // PR number to monitor
+	WaitFor    string `yaml:"wait_for"`              // Target state: "merged", "closed"
+	PollSecs   int    `yaml:"poll_secs,omitempty"`   // Poll interval (default: 30)
+	HeadBranch string `yaml:"head_branch,omitempty"` // Optional branch name to resolve PR dynamically
 }
 
 // ParallelGroup represents a group of steps to run concurrently.
@@ -238,8 +239,11 @@ func (c *Config) validatePRWait(pr *PRWait, location string) error {
 	if pr.Repo == "" {
 		return fmt.Errorf("%s (%q): missing repo", location, pr.Name)
 	}
-	if pr.PRNumber <= 0 {
-		return fmt.Errorf("%s (%q): invalid pr_number", location, pr.Name)
+	if pr.PRNumber <= 0 && pr.HeadBranch == "" {
+		return fmt.Errorf("%s (%q): either pr_number or head_branch must be provided", location, pr.Name)
+	}
+	if pr.PRNumber > 0 && pr.HeadBranch != "" {
+		return fmt.Errorf("%s (%q): pr_number and head_branch are mutually exclusive", location, pr.Name)
 	}
 	if pr.WaitFor == "" {
 		return fmt.Errorf("%s (%q): missing wait_for", location, pr.Name)

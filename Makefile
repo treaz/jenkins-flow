@@ -4,7 +4,7 @@
 BINARY_NAME=jenkins-flow
 MAIN_PATH=cmd/jenkins-flow/main.go
 
-.PHONY: all build run clean test deps help
+.PHONY: all build run clean test deps help serve stop-server
 
 ## build-web: Build the Vue frontend
 build-web:
@@ -24,6 +24,15 @@ run: build
 ## serve: Run the dashboard server
 serve: build
 	./$(BINARY_NAME) serve
+
+## stop-server: Stop the dashboard server
+stop-server:
+	@if pgrep -f "$(BINARY_NAME) serve" >/dev/null; then \
+		pkill -f "$(BINARY_NAME) serve"; \
+		echo "Stopped $(BINARY_NAME) serve process."; \
+	else \
+		echo "No $(BINARY_NAME) serve process found."; \
+	fi
 
 ## deps: Download and tidy dependencies
 deps:
