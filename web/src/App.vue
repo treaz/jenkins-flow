@@ -29,12 +29,19 @@
         
         <div class="actions">
           <button 
+            v-if="!isRunning"
             class="run-btn" 
-            :disabled="!selectedWorkflow || isRunning"
+            :disabled="!selectedWorkflow"
             @click="triggerRun"
           >
-            <span v-if="isRunning">Running...</span>
-            <span v-else>Run Workflow</span>
+            Run Workflow
+          </button>
+          <button 
+            v-else
+            class="stop-btn" 
+            @click="triggerStop"
+          >
+            Stop Workflow
           </button>
         </div>
 
@@ -73,7 +80,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import WorkflowView from './components/WorkflowView.vue'
 import ToastNotification from './components/ToastNotification.vue'
-import { fetchWorkflows, fetchStatus, runWorkflow, fetchLogLevel, setLogLevel } from './api/client'
+import { fetchWorkflows, fetchStatus, runWorkflow, stopWorkflow, fetchLogLevel, setLogLevel } from './api/client'
 
 const workflows = ref([])
 const selectedWorkflow = ref('')
@@ -136,6 +143,25 @@ const triggerRun = async () => {
       message: err.message,
       type: 'error',
       duration: 8000
+    })
+  }
+}
+
+const triggerStop = async () => {
+  try {
+    await stopWorkflow()
+     toast.value.add({
+      title: 'Workflow Stopped',
+      message: 'Stop signal sent to workflow',
+      type: 'success'
+    })
+    // Immediate update
+    await updateStatus()
+  } catch (err) {
+     toast.value.add({
+      title: 'Stop Failed',
+      message: err.message,
+      type: 'error'
     })
   }
 }
@@ -321,6 +347,22 @@ onUnmounted(() => {
   opacity: 0.5;
   cursor: not-allowed;
   background: var(--text-muted);
+}
+
+.stop-btn {
+  width: 100%;
+  padding: 10px;
+  background: #ef4444;
+  color: white;
+  border: none;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.stop-btn:hover {
+  opacity: 0.9;
 }
 
 .content-area {
