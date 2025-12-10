@@ -20,9 +20,9 @@ func main() {
 	runInstancesPath := runCmd.String("instances", "instances.yaml", "Path to instances configuration file")
 
 	serveCmd := flag.NewFlagSet("serve", flag.ExitOnError)
-	servePort := serveCmd.Int("port", 8080, "Port to run the dashboard server on")
+	servePort := serveCmd.Int("port", 32567, "Port to run the dashboard server on")
 	serveInstancesPath := serveCmd.String("instances", "instances.yaml", "Path to instances configuration file")
-	serveWorkflowsDir := serveCmd.String("workflows-dir", ".", "Directory containing workflow files")
+	serveWorkflowsDir := serveCmd.String("workflows-dir", "workflows", "Directory containing workflow files")
 
 	// Check for subcommand
 	if len(os.Args) < 2 {
@@ -69,9 +69,9 @@ Run Options:
   -instances string   Path to instances configuration file (default "instances.yaml")
 
 Serve Options:
-  -port int           Port to run the dashboard server on (default 8080)
+  -port int           Port to run the dashboard server on (default 32567)
   -instances string   Path to instances configuration file (default "instances.yaml")
-  -workflows-dir string  Directory containing workflow files (default ".")
+  -workflows-dir string  Directory containing workflow files (default "workflows")
 
 Examples:
   jenkins-flow run -workflow deploy.yaml

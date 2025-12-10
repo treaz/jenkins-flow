@@ -323,3 +323,89 @@ func TestWorkflowItem_AsStep(t *testing.T) {
 		t.Errorf("expected Params['ENV'] 'production', got %q", step.Params["ENV"])
 	}
 }
+
+func TestLoad_PRWaitWorkflow(t *testing.T) {
+	// 1. Create Instances File
+	instancesContent := `
+instances:
+  local:
+    url: http://localhost:8080
+    token: "user:token"
+github:
+  token: "gh-token"
+`
+	instancesFile, err := os.CreateTemp("", "instances_pr_*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(instancesFile.Name())
+	instancesFile.Write([]byte(instancesContent))
+	instancesFile.Close()
+
+	// 2. Create Workflow File with PR wait step
+	workflowContent := `
+workflow:
+  - wait_for_pr:
+      name: "Wait for Release"
+      owner: "treaz"
+      repo: "monitor"
+      pr_number: 42
+      wait_for: "merged"
+  - name: "Build"
+    instance: local
+    job: "/job/build"
+`
+	workflowFile, err := os.CreateTemp("", "workflow_pr_*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(workflowFile.Name())
+	workflowFile.Write([]byte(workflowContent))
+	workflowFile.Close()
+
+	// Test Load
+	cfg, err := Load(instancesFile.Name(), workflowFile.Name())
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	// Verify GitHub config
+	if cfg.GitHub == nil {
+		t.Fatal("expected GitHub config to be loaded")
+	}
+	token, err := cfg.GitHub.GetToken()
+	if err != nil {
+		t.Fatalf("unexpected error getting token: %v", err)
+	}
+	if token != "gh-token" {
+		t.Errorf("expected GitHub token 'gh-token', got %q", token)
+	}
+
+	// Verify workflow structure
+	if len(cfg.Workflow) != 2 {
+		t.Fatalf("expected 2 workflow items, got %d", len(cfg.Workflow))
+	}
+
+	// First item: PR Wait
+	if !cfg.Workflow[0].IsPRWait() {
+		t.Error("first workflow item should be PR Wait")
+	}
+	pr := cfg.Workflow[0].WaitForPR
+	if pr.Name != "Wait for Release" {
+		t.Errorf("expected PR name 'Wait for Release', got %q", pr.Name)
+	}
+	if pr.Owner != "treaz" {
+		t.Errorf("expected Owner 'treaz', got %q", pr.Owner)
+	}
+	if pr.PRNumber != 42 {
+		t.Errorf("expected PR Number 42, got %d", pr.PRNumber)
+	}
+	if pr.WaitFor != "merged" {
+		t.Errorf("expected WaitFor 'merged', got %q", pr.WaitFor)
+	}
+
+	// Second item: regular step
+	if cfg.Workflow[1].IsPRWait() {
+		t.Error("second workflow item should not be PR Wait")
+	}
+}

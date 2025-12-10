@@ -47,12 +47,15 @@ Jenkins API tokens are persistent and do not expire unless manually revoked. To 
 > **Note**: API tokens are tied to your user account and inherit your permissions. Keep them secure and never commit them to version control.
 
 ### Build
+
 ```bash
 git clone https://github.com/treaz/jenkins-flow.git
 cd jenkins-flow
-go mod tidy
-go build -o jenkins-flow cmd/jenkins-flow/main.go
+make deps   # Download dependencies
+make build  # Build the binary
 ```
+
+> **Tip**: Run `make help` to see all available commands (build, test, run, clean, lint, etc.).
 
 ## Usage
 
@@ -69,6 +72,12 @@ instances:
     url: "https://jenkins-eu.example.com"
     # Or use direct token (local only)
     token: "username:11xxxxxxxxxxxxxxxxxxxx"
+
+# Optional: GitHub Authentication (for wait_for_pr)
+github:
+  auth_env: "GITHUB_TOKEN"
+  # Or use direct token
+  # token: "ghp_xxxxxxxxxxxxxxxxxxxx"
 ```
 
 2. **Define Workflow**:
@@ -76,6 +85,12 @@ instances:
 
 ```yaml
 workflow:
+  - wait_for_pr:
+      name: "Wait for Release PR"
+      owner: "treaz"
+      repo: "my-app"
+      pr_number: 123
+      wait_for: "merged" # or "closed"
   - name: "Build US Backend"
     instance: prod-us
     job: "/job/backend/job/build"

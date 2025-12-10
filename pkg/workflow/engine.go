@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/treaz/jenkins-flow/pkg/config"
+	"github.com/treaz/jenkins-flow/pkg/github"
 	"github.com/treaz/jenkins-flow/pkg/jenkins"
 	"golang.org/x/sync/errgroup"
 )
@@ -25,7 +26,19 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	start := time.Now()
 
 	for i, item := range cfg.Workflow {
-		if item.IsParallel() {
+		if item.IsPRWait() {
+			// Execute PR wait
+			pr := item.WaitForPR
+			log.Printf("[%d/%d] Waiting for PR #%d (%s/%s) to be %s...",
+				i+1, len(cfg.Workflow), pr.PRNumber, pr.Owner, pr.Repo, pr.WaitFor)
+
+			if err := runPRWait(ctx, cfg, pr); err != nil {
+				return fmt.Errorf("PR wait %q failed: %w", pr.Name, err)
+			}
+
+			log.Printf("[%d/%d] PR #%d is now %s. Continuing workflow...",
+				i+1, len(cfg.Workflow), pr.PRNumber, pr.WaitFor)
+		} else if item.IsParallel() {
 			// Execute parallel group
 			groupName := item.Parallel.Name
 			if groupName == "" {
@@ -84,7 +97,19 @@ func RunWithCallbacks(ctx context.Context, cfg *config.Config, callbacks Workflo
 	start := time.Now()
 
 	for i, item := range cfg.Workflow {
-		if item.IsParallel() {
+		if item.IsPRWait() {
+			// Execute PR wait
+			pr := item.WaitForPR
+			log.Printf("[%d/%d] Waiting for PR #%d (%s/%s) to be %s...",
+				i+1, len(cfg.Workflow), pr.PRNumber, pr.Owner, pr.Repo, pr.WaitFor)
+
+			if err := runPRWait(ctx, cfg, pr); err != nil {
+				return fmt.Errorf("PR wait %q failed: %w", pr.Name, err)
+			}
+
+			log.Printf("[%d/%d] PR #%d is now %s. Continuing workflow...",
+				i+1, len(cfg.Workflow), pr.PRNumber, pr.WaitFor)
+		} else if item.IsParallel() {
 			// Execute parallel group
 			groupName := item.Parallel.Name
 			if groupName == "" {
@@ -180,9 +205,23 @@ func runStep(ctx context.Context, cfg *config.Config, step config.Step) (string,
 	return result, nil
 }
 
+// runPRWait monitors a GitHub PR until it reaches the target state.
+func runPRWait(ctx context.Context, cfg *config.Config, pr *config.PRWait) error {
+	token, err := cfg.GitHub.GetToken()
+	if err != nil {
+		return fmt.Errorf("github auth error: %w", err)
+	}
+
+	client := github.NewClient(token)
+	pollInterval := time.Duration(pr.PollSecs) * time.Second
+	if pollInterval == 0 {
+		pollInterval = 30 * time.Second
+	}
+
+	return client.WaitForPRStatus(ctx, pr.Owner, pr.Repo, pr.PRNumber, pr.WaitFor, pollInterval)
+}
+
 // runParallelGroup executes multiple steps in parallel.
-// All steps must succeed for the group to succeed.
-// If any step fails, remaining steps are cancelled (fail-fast).
 func runParallelGroup(ctx context.Context, cfg *config.Config, steps []config.Step) ([]StepResult, error) {
 	results := make([]StepResult, len(steps))
 	var resultsMu sync.Mutex
