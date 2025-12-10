@@ -1,0 +1,10 @@
+workflow:
+  - name: "Build Core"
+    instance: local
+    job: "/job/core-build"
+    params:
+      BRANCH: "main"
+      DEPLOY_ENV: "staging"
+  - name: "Test Integration"
+    instance: local
+    job: "/job/integration-tests"

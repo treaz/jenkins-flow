@@ -1,0 +1,12 @@
+instances:
+  # Example Template
+  # Copy this file to instances.yaml and fill in your details.
+  # This file (instances.yaml) is gitignored to prevent leaking secrets.
+
+  local:
+    url: http://localhost:8080
+    auth_env: JENKINS_AUTH_LOCAL
+  
+  # production:
+  #   url: https://jenkins.example.com
+  #   token: "user:token"
