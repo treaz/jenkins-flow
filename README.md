@@ -5,9 +5,9 @@ A robust Go CLI tools to orchestrate Jenkins jobs linearly across multiple insta
 ## Features
 
 - **Multi-Instance Support**: Orchestrate jobs across different Jenkins servers.
-- **Linear Workflow**: Trigger jobs in a defined sequence.
+- **Sequential & Parallel Workflows**: Run steps in sequence or parallel (e.g., deploy to multiple regions simultaneously).
 - **Robust Polling**: Waits for Queue items to start and Builds to finish.
-- **Fail Fast**: Stops immediately if a job fails.
+- **Fail Fast**: Stops immediately if a job fails (including cancellation of parallel siblings).
 - **Notifications**: macOS desktop notifications via `terminal-notifier`, with optional Slack integration.
 - **Secure Auth**: Separation of concerns with `instances.yaml` (ignored) and `workflow.yaml`.
 
@@ -86,6 +86,51 @@ workflow:
     instance: prod-eu
     job: "/job/deploy/job/replica"
 ```
+
+### Parallel Execution
+
+To run steps in parallel (e.g., deploying to multiple regions simultaneously), use the `parallel` block:
+
+```yaml
+workflow:
+  # Sequential: Build first
+  - name: "Build Backend"
+    instance: prod-us
+    job: "/job/backend/job/build"
+    params:
+      BRANCH: "main"
+
+  # Parallel: Deploy to all regions at once
+  - parallel:
+      name: "Deploy to All Regions"  # Optional group name
+      steps:
+        - name: "Deploy US"
+          instance: prod-us
+          job: "/job/deploy"
+          params:
+            REGION: "us-east-1"
+        - name: "Deploy EU"
+          instance: prod-eu
+          job: "/job/deploy"
+          params:
+            REGION: "eu-west-1"
+        - name: "Deploy APAC"
+          instance: prod-apac
+          job: "/job/deploy"
+          params:
+            REGION: "ap-southeast-1"
+
+  # Sequential: Run after all parallel steps succeed
+  - name: "Integration Tests"
+    instance: prod-us
+    job: "/job/integration-tests"
+```
+
+**Parallel Behavior:**
+- All steps within a `parallel` block run concurrently
+- The workflow waits for **all** parallel steps to complete **successfully** before proceeding
+- If any step fails, remaining parallel steps are cancelled (fail-fast)
+- Parallel groups can be mixed with sequential steps
 
 3. **Set Environment Variables** (if using `auth_env`):
 

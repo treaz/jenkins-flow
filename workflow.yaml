@@ -5,3 +5,18 @@ workflow:
     params:
       BRANCH: "main"
       DEPLOY_ENV: "staging"
+
+  # Example: parallel deployment to multiple regions
+  # - parallel:
+  #     name: "Deploy to All Regions"
+  #     steps:
+  #       - name: "Deploy US"
+  #         instance: prod-us
+  #         job: "/job/deploy"
+  #         params:
+  #           REGION: "us-east-1"
+  #       - name: "Deploy EU"
+  #         instance: prod-eu
+  #         job: "/job/deploy"
+  #         params:
+  #           REGION: "eu-west-1"
