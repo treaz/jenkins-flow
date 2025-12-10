@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -76,6 +77,7 @@ func (s *Server) Start() error {
 
 	// API routes
 	mux.HandleFunc("/api/workflows", s.handleListWorkflows)
+	mux.HandleFunc("/api/workflows/", s.handleWorkflowDefinition)
 	mux.HandleFunc("/api/status", s.handleStatus)
 	mux.HandleFunc("/api/run", s.handleRun)
 	mux.HandleFunc("/api/stop", s.handleStop)
@@ -141,6 +143,67 @@ func (s *Server) handleListWorkflows(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(workflows)
+}
+
+// handleWorkflowDefinition returns the static definition of a workflow for preview purposes.
+func (s *Server) handleWorkflowDefinition(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	const prefix = "/api/workflows/"
+	if !strings.HasPrefix(r.URL.Path, prefix) {
+		http.NotFound(w, r)
+		return
+	}
+
+	requested := strings.TrimPrefix(r.URL.Path, prefix)
+	if !strings.HasSuffix(requested, "/definition") {
+		http.NotFound(w, r)
+		return
+	}
+
+	requested = strings.TrimSuffix(requested, "/definition")
+	requested = strings.TrimSuffix(requested, "/")
+
+	if requested == "" {
+		http.Error(w, "Workflow path is required", http.StatusBadRequest)
+		return
+	}
+
+	workflowPath, err := url.PathUnescape(requested)
+	if err != nil {
+		http.Error(w, "Invalid workflow path", http.StatusBadRequest)
+		return
+	}
+
+	workflowPath = filepath.Clean(workflowPath)
+	workflowsRoot := filepath.Clean(s.workflowsDir)
+	if !strings.HasPrefix(workflowPath, workflowsRoot+string(os.PathSeparator)) && workflowPath != workflowsRoot {
+		http.Error(w, "Workflow path outside allowed directory", http.StatusForbidden)
+		return
+	}
+
+	if stat, err := os.Stat(workflowPath); err != nil || stat.IsDir() {
+		http.Error(w, "Workflow file not found", http.StatusNotFound)
+		return
+	}
+
+	cfg, err := config.Load(s.instancesPath, workflowPath)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to load workflow: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	definition := &WorkflowState{
+		Name:   workflowPath,
+		Status: StatusPending,
+		Items:  s.configToStateItems(cfg),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(definition)
 }
 
 // handleStatus returns the current workflow execution status.

@@ -4,7 +4,7 @@
       <div class="workflow-info">
         <h2 class="workflow-name">{{ workflow.name }}</h2>
         <div class="workflow-meta">
-          <StatusBadge :status="workflow.status" />
+          <StatusBadge :status="workflow.status || 'pending'" />
           <span v-if="workflow.startedAt" class="started-time">
             Started {{ formatTime(workflow.startedAt) }}
           </span>

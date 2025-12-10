@@ -21,6 +21,21 @@ export async function fetchStatus() {
 }
 
 /**
+ * Fetches the static definition of a workflow for preview rendering.
+ * @param {string} workflowPath - Absolute path returned by fetchWorkflows
+ * @returns {Promise<Object>}
+ */
+export async function fetchWorkflowDefinition(workflowPath) {
+    const encoded = encodeURIComponent(workflowPath);
+    const res = await fetch(`${API_BASE}/api/workflows/${encoded}/definition`);
+    if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || 'Failed to fetch workflow definition');
+    }
+    return res.json();
+}
+
+/**
  * Triggers a workflow run.
  * @param {string} workflowPath - Path to the workflow file
  * @returns {Promise<{status: string}>}

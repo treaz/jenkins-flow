@@ -60,12 +60,12 @@
       
       <div class="content-area">
         <WorkflowView 
-          v-if="currentStatus?.workflow" 
-          :workflow="currentStatus.workflow" 
+          v-if="displayWorkflow" 
+          :workflow="displayWorkflow" 
         />
         <div v-else-if="selectedWorkflow" class="workflow-preview">
-          <h3>Ready to Run</h3>
-          <p>Click "Run Workflow" to start {{ getWorkflowName(selectedWorkflow) }}</p>
+          <h3>Loading Workflow</h3>
+          <p>Fetching steps for {{ getWorkflowName(selectedWorkflow) }}...</p>
         </div>
         <div v-else class="empty-selection">
           <p>Select a workflow from the sidebar</p>
@@ -77,18 +77,32 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import WorkflowView from './components/WorkflowView.vue'
 import ToastNotification from './components/ToastNotification.vue'
-import { fetchWorkflows, fetchStatus, runWorkflow, stopWorkflow, fetchLogLevel, setLogLevel } from './api/client'
+import { fetchWorkflows, fetchStatus, runWorkflow, stopWorkflow, fetchLogLevel, setLogLevel, fetchWorkflowDefinition } from './api/client'
 
 const workflows = ref([])
 const selectedWorkflow = ref('')
 const currentStatus = ref(null)
+const workflowDefinitions = ref({})
 const isRunning = ref(false)
 const logLevel = ref('INFO')
 const pollTimer = ref(null)
 const toast = ref(null)
+const pendingDefinitions = new Set()
+
+const displayWorkflow = computed(() => {
+  const selected = selectedWorkflow.value
+  if (!selected) return null
+
+  const statusWorkflow = currentStatus.value?.workflow
+  if (statusWorkflow && statusWorkflow.name === selected) {
+    return statusWorkflow
+  }
+
+  return workflowDefinitions.value[selected] || null
+})
 
 const getWorkflowName = (path) => {
   const wf = workflows.value.find(w => w.path === path)
@@ -101,21 +115,43 @@ const loadWorkflows = async () => {
     if (workflows.value.length > 0 && !selectedWorkflow.value) {
       selectedWorkflow.value = workflows.value[0].path
     }
+    if (selectedWorkflow.value) {
+      await loadWorkflowDefinition(selectedWorkflow.value)
+    }
   } catch (err) {
     console.error('Failed to load workflows:', err)
   }
+const loadWorkflowDefinition = async (path) => {
+  if (!path) return
+  if (workflowDefinitions.value[path] || pendingDefinitions.has(path)) return
+
+  pendingDefinitions.add(path)
+  try {
+    const definition = await fetchWorkflowDefinition(path)
+    workflowDefinitions.value = {
+      ...workflowDefinitions.value,
+      [path]: definition
+    }
+  } catch (err) {
+    console.error('Failed to load workflow definition:', err)
+  } finally {
+    pendingDefinitions.delete(path)
+  }
 }
 
-const updateStatus = async () => {
+}
+
+const loadWorkflowDefinition = async (path) => {
+  if (!path) return
+  if (workflowDefinitions.value[path] || pendingDefinitions.has(path)) return
+
+  pendingDefinitions.add(path)
   try {
-    const status = await fetchStatus()
-    currentStatus.value = status
-    isRunning.value = status.running
-    
-    // If running, ensure we select the running workflow
-    // Note: The backend state currently tracks the running workflow name/path
-    // If we wanted to force selection:
-    // if (status.running && status.workflow?.name) { ... }
+    const definition = await fetchWorkflowDefinition(path)
+    workflowDefinitions.value = {
+      ...workflowDefinitions.value,
+      [path]: definition
+    }
   } catch (err) {
     console.error('Failed to update status:', err)
   }
@@ -123,6 +159,7 @@ const updateStatus = async () => {
 
 const selectWorkflow = (path) => {
   selectedWorkflow.value = path
+  loadWorkflowDefinition(path)
 }
 
 const triggerRun = async () => {
@@ -187,6 +224,12 @@ const changeLogLevel = async (e) => {
     logLevel.value = current.level
   }
 }
+
+watch(selectedWorkflow, (path) => {
+  if (path) {
+    loadWorkflowDefinition(path)
+  }
+})
 
 
 onMounted(() => {
