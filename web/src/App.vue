@@ -50,11 +50,13 @@
           <div class="setting-item">
              <label for="log-level">Log Level</label>
              <select id="log-level" class="select-input" :value="logLevel" @change="changeLogLevel">
+               <option value="ERROR">Error</option>
                <option value="INFO">Info</option>
                <option value="DEBUG">Debug</option>
                <option value="TRACE">Trace</option>
              </select>
           </div>
+
         </div>
       </aside>
       
