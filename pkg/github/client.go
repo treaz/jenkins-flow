@@ -138,9 +138,9 @@ func (c *Client) FindPRByBranch(ctx context.Context, owner, repo, branch string)
 	}
 }
 
-// WaitForPRStatus polls until the PR reaches the target state.
+// WaitForPRStatus polls until the PR reaches the target state and returns the final PR status.
 // Supported target states: "merged", "closed"
-func (c *Client) WaitForPRStatus(ctx context.Context, owner, repo string, prNumber int, targetState string, pollInterval time.Duration) error {
+func (c *Client) WaitForPRStatus(ctx context.Context, owner, repo string, prNumber int, targetState string, pollInterval time.Duration) (*PRStatus, error) {
 	if pollInterval == 0 {
 		pollInterval = defaultPollInterval
 	}
@@ -149,23 +149,23 @@ func (c *Client) WaitForPRStatus(ctx context.Context, owner, repo string, prNumb
 	defer ticker.Stop()
 
 	// Check immediately first
-	if done, err := c.checkPRState(ctx, owner, repo, prNumber, targetState); err != nil {
-		return err
+	if done, pr, err := c.checkPRState(ctx, owner, repo, prNumber, targetState); err != nil {
+		return nil, err
 	} else if done {
-		return nil
+		return pr, nil
 	}
 
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return nil, ctx.Err()
 		case <-ticker.C:
-			done, err := c.checkPRState(ctx, owner, repo, prNumber, targetState)
+			done, pr, err := c.checkPRState(ctx, owner, repo, prNumber, targetState)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			if done {
-				return nil
+				return pr, nil
 			}
 			c.Logger.Debugf("  -> PR #%d: still waiting for state %q...", prNumber, targetState)
 		}
@@ -173,30 +173,30 @@ func (c *Client) WaitForPRStatus(ctx context.Context, owner, repo string, prNumb
 }
 
 // checkPRState checks if PR has reached target state
-func (c *Client) checkPRState(ctx context.Context, owner, repo string, prNumber int, targetState string) (bool, error) {
+func (c *Client) checkPRState(ctx context.Context, owner, repo string, prNumber int, targetState string) (bool, *PRStatus, error) {
 	pr, err := c.GetPRStatus(ctx, owner, repo, prNumber)
 	if err != nil {
-		return false, err
+		return false, nil, err
 	}
 
 	switch targetState {
 	case "merged":
 		if pr.Merged {
 			c.Logger.Infof("  -> PR #%d is merged!", prNumber)
-			return true, nil
+			return true, pr, nil
 		}
 		// If PR is closed but not merged, it won't become merged
 		if pr.State == "closed" && !pr.Merged {
-			return false, fmt.Errorf("PR #%d was closed without being merged", prNumber)
+			return false, pr, fmt.Errorf("PR #%d was closed without being merged", prNumber)
 		}
 	case "closed":
 		if pr.State == "closed" {
 			c.Logger.Infof("  -> PR #%d is closed (merged: %v)", prNumber, pr.Merged)
-			return true, nil
+			return true, pr, nil
 		}
 	default:
-		return false, fmt.Errorf("unsupported target state: %q (use 'merged' or 'closed')", targetState)
+		return false, pr, fmt.Errorf("unsupported target state: %q (use 'merged' or 'closed')", targetState)
 	}
 
-	return false, nil
+	return false, pr, nil
 }

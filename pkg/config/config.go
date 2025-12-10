@@ -44,13 +44,15 @@ func (g GitHubConfig) GetToken() (string, error) {
 
 // PRWait represents a wait condition for a GitHub PR
 type PRWait struct {
-	Name       string `yaml:"name"`
-	Owner      string `yaml:"owner"`                 // GitHub org/user
-	Repo       string `yaml:"repo"`                  // Repository name
-	PRNumber   int    `yaml:"pr_number"`             // PR number to monitor
-	WaitFor    string `yaml:"wait_for"`              // Target state: "merged", "closed"
-	PollSecs   int    `yaml:"poll_secs,omitempty"`   // Poll interval (default: 30)
-	HeadBranch string `yaml:"head_branch,omitempty"` // Optional branch name to resolve PR dynamically
+	Name          string `yaml:"name"`
+	Owner         string `yaml:"owner"`                 // GitHub org/user
+	Repo          string `yaml:"repo"`                  // Repository name
+	PRNumber      int    `yaml:"pr_number"`             // PR number to monitor
+	WaitFor       string `yaml:"wait_for"`              // Target state: "merged", "closed"
+	PollSecs      int    `yaml:"poll_secs,omitempty"`   // Poll interval (default: 30)
+	HeadBranch    string `yaml:"head_branch,omitempty"` // Optional branch name to resolve PR dynamically
+	ResolvedURL   string `yaml:"-"`
+	ResolvedTitle string `yaml:"-"`
 }
 
 // ParallelGroup represents a group of steps to run concurrently.

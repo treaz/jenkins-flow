@@ -34,7 +34,7 @@ func Run(ctx context.Context, cfg *config.Config, l *logger.Logger) error {
 			l.Infof("[%d/%d] Waiting for %s (%s/%s) to be %s...",
 				i+1, len(cfg.Workflow), target, pr.Owner, pr.Repo, pr.WaitFor)
 
-			if err := runPRWait(ctx, cfg, pr, l); err != nil {
+			if err := runPRWait(ctx, cfg, pr, l, nil, i); err != nil {
 				return fmt.Errorf("PR wait %q failed: %w", pr.Name, err)
 			}
 
@@ -92,6 +92,10 @@ func Run(ctx context.Context, cfg *config.Config, l *logger.Logger) error {
 type WorkflowCallbacks interface {
 	OnStepStart(itemIndex, stepIndex int, name, buildURL string)
 	OnStepComplete(itemIndex, stepIndex int, name, result string, err error)
+	OnPRWaitStart(itemIndex int, pr *config.PRWait)
+	OnPRWaitProgress(itemIndex int, pr *config.PRWait)
+	OnPRWaitComplete(itemIndex int, pr *config.PRWait)
+	OnPRWaitFailed(itemIndex int, pr *config.PRWait, err error)
 }
 
 // RunWithCallbacks executes the workflow with callback notifications.
@@ -107,8 +111,14 @@ func RunWithCallbacks(ctx context.Context, cfg *config.Config, l *logger.Logger,
 			l.Infof("[%d/%d] Waiting for %s (%s/%s) to be %s...",
 				i+1, len(cfg.Workflow), target, pr.Owner, pr.Repo, pr.WaitFor)
 
-			if err := runPRWait(ctx, cfg, pr, l); err != nil {
+			if err := runPRWait(ctx, cfg, pr, l, callbacks, i); err != nil {
+				if callbacks != nil {
+					callbacks.OnPRWaitFailed(i, pr, err)
+				}
 				return fmt.Errorf("PR wait %q failed: %w", pr.Name, err)
+			}
+			if callbacks != nil {
+				callbacks.OnPRWaitComplete(i, pr)
 			}
 
 			resolved := describeResolvedPR(pr)
@@ -211,7 +221,7 @@ func runStep(ctx context.Context, cfg *config.Config, step config.Step, l *logge
 }
 
 // runPRWait monitors a GitHub PR until it reaches the target state.
-func runPRWait(ctx context.Context, cfg *config.Config, pr *config.PRWait, l *logger.Logger) error {
+func runPRWait(ctx context.Context, cfg *config.Config, pr *config.PRWait, l *logger.Logger, callbacks WorkflowCallbacks, itemIndex int) error {
 	if cfg.GitHub == nil {
 		return fmt.Errorf("github configuration is required for wait_for_pr steps")
 	}
@@ -227,6 +237,10 @@ func runPRWait(ctx context.Context, cfg *config.Config, pr *config.PRWait, l *lo
 		pollInterval = 30 * time.Second
 	}
 
+	if callbacks != nil {
+		callbacks.OnPRWaitStart(itemIndex, pr)
+	}
+
 	prNumber := pr.PRNumber
 	if prNumber == 0 && pr.HeadBranch != "" {
 		resolved, err := client.FindPRByBranch(ctx, pr.Owner, pr.Repo, pr.HeadBranch)
@@ -235,14 +249,43 @@ func runPRWait(ctx context.Context, cfg *config.Config, pr *config.PRWait, l *lo
 		}
 		prNumber = resolved.Number
 		pr.PRNumber = prNumber
+		pr.ResolvedURL = resolved.HTMLURL
+		pr.ResolvedTitle = resolved.Title
 		l.Infof("  -> Resolved branch %q to PR #%d (%s)", pr.HeadBranch, prNumber, resolved.HTMLURL)
+		if callbacks != nil {
+			callbacks.OnPRWaitProgress(itemIndex, pr)
+		}
 	}
 
 	if prNumber == 0 {
 		return fmt.Errorf("no PR number resolved for wait step %q", pr.Name)
 	}
 
-	return client.WaitForPRStatus(ctx, pr.Owner, pr.Repo, prNumber, pr.WaitFor, pollInterval)
+	if pr.ResolvedURL == "" || pr.ResolvedTitle == "" {
+		status, err := client.GetPRStatus(ctx, pr.Owner, pr.Repo, prNumber)
+		if err != nil {
+			return fmt.Errorf("failed to fetch PR #%d metadata: %w", prNumber, err)
+		}
+		pr.ResolvedURL = status.HTMLURL
+		pr.ResolvedTitle = status.Title
+		if callbacks != nil {
+			callbacks.OnPRWaitProgress(itemIndex, pr)
+		}
+	}
+
+	finalStatus, err := client.WaitForPRStatus(ctx, pr.Owner, pr.Repo, prNumber, pr.WaitFor, pollInterval)
+	if err != nil {
+		return err
+	}
+	if finalStatus != nil {
+		pr.ResolvedURL = finalStatus.HTMLURL
+		pr.ResolvedTitle = finalStatus.Title
+		if callbacks != nil {
+			callbacks.OnPRWaitProgress(itemIndex, pr)
+		}
+	}
+
+	return nil
 }
 
 func describePRTarget(pr *config.PRWait) string {

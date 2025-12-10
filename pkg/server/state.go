@@ -29,6 +29,22 @@ type StepState struct {
 	BuildURL  string     `json:"buildUrl,omitempty"`
 }
 
+// PRWaitState holds the state of a PR wait item.
+type PRWaitState struct {
+	Name       string     `json:"name"`
+	Owner      string     `json:"owner"`
+	Repo       string     `json:"repo"`
+	HeadBranch string     `json:"headBranch,omitempty"`
+	PRNumber   int        `json:"prNumber,omitempty"`
+	WaitFor    string     `json:"waitFor"`
+	Status     StepStatus `json:"status"`
+	Error      string     `json:"error,omitempty"`
+	StartedAt  *time.Time `json:"startedAt,omitempty"`
+	EndedAt    *time.Time `json:"endedAt,omitempty"`
+	HTMLURL    string     `json:"htmlUrl,omitempty"`
+	Title      string     `json:"title,omitempty"`
+}
+
 // ParallelGroupState holds the state of a parallel execution group.
 type ParallelGroupState struct {
 	Name   string      `json:"name"`
@@ -39,8 +55,10 @@ type ParallelGroupState struct {
 // WorkflowItemState represents either a step or parallel group.
 type WorkflowItemState struct {
 	IsParallel bool                `json:"isParallel"`
+	IsPRWait   bool                `json:"isPRWait"`
 	Step       *StepState          `json:"step,omitempty"`
 	Parallel   *ParallelGroupState `json:"parallel,omitempty"`
+	PRWait     *PRWaitState        `json:"prWait,omitempty"`
 }
 
 // WorkflowState holds the complete state of a workflow execution.
@@ -139,6 +157,115 @@ func (sm *StateManager) UpdateStepStatus(itemIndex int, stepIndex int, status St
 	if item.IsParallel && item.Parallel != nil {
 		sm.updateParallelGroupStatus(item.Parallel)
 	}
+}
+
+// StartPRWait marks a PR wait item as running and records metadata.
+func (sm *StateManager) StartPRWait(itemIndex int, name, owner, repo, headBranch, waitFor string, prNumber int, htmlURL, title string) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	if sm.current == nil || itemIndex >= len(sm.current.Items) {
+		return
+	}
+
+	item := &sm.current.Items[itemIndex]
+	if !item.IsPRWait || item.PRWait == nil {
+		return
+	}
+
+	now := time.Now()
+	prState := item.PRWait
+	prState.Name = name
+	prState.Owner = owner
+	prState.Repo = repo
+	prState.HeadBranch = headBranch
+	prState.WaitFor = waitFor
+	prState.Status = StatusRunning
+	prState.Error = ""
+	prState.HTMLURL = htmlURL
+	prState.Title = title
+	prState.PRNumber = prNumber
+	if prState.StartedAt == nil {
+		prState.StartedAt = &now
+	}
+	prState.EndedAt = nil
+}
+
+// UpdatePRWaitMetadata refreshes the PR wait item metadata without altering completion state.
+func (sm *StateManager) UpdatePRWaitMetadata(itemIndex int, prNumber int, htmlURL, title string) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	if sm.current == nil || itemIndex >= len(sm.current.Items) {
+		return
+	}
+
+	item := &sm.current.Items[itemIndex]
+	if !item.IsPRWait || item.PRWait == nil {
+		return
+	}
+
+	prState := item.PRWait
+	if prNumber > 0 {
+		prState.PRNumber = prNumber
+	}
+	if htmlURL != "" {
+		prState.HTMLURL = htmlURL
+	}
+	if title != "" {
+		prState.Title = title
+	}
+	if prState.Status == StatusPending {
+		prState.Status = StatusRunning
+	}
+}
+
+// CompletePRWait marks the PR wait item as successful.
+func (sm *StateManager) CompletePRWait(itemIndex int) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	if sm.current == nil || itemIndex >= len(sm.current.Items) {
+		return
+	}
+
+	item := &sm.current.Items[itemIndex]
+	if !item.IsPRWait || item.PRWait == nil {
+		return
+	}
+
+	now := time.Now()
+	prState := item.PRWait
+	prState.Status = StatusSuccess
+	prState.Error = ""
+	if prState.StartedAt == nil {
+		prState.StartedAt = &now
+	}
+	prState.EndedAt = &now
+}
+
+// FailPRWait marks the PR wait item as failed with an error message.
+func (sm *StateManager) FailPRWait(itemIndex int, errMsg string) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	if sm.current == nil || itemIndex >= len(sm.current.Items) {
+		return
+	}
+
+	item := &sm.current.Items[itemIndex]
+	if !item.IsPRWait || item.PRWait == nil {
+		return
+	}
+
+	now := time.Now()
+	prState := item.PRWait
+	prState.Status = StatusFailed
+	prState.Error = errMsg
+	if prState.StartedAt == nil {
+		prState.StartedAt = &now
+	}
+	prState.EndedAt = &now
 }
 
 // updateParallelGroupStatus updates the overall status of a parallel group.

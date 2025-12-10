@@ -347,16 +347,39 @@ func (s *Server) configToStateItems(cfg *config.Config) []WorkflowItemState {
 			}
 			items[i] = WorkflowItemState{
 				IsParallel: true,
+				IsPRWait:   false,
 				Parallel: &ParallelGroupState{
 					Name:   item.Parallel.Name,
 					Steps:  steps,
 					Status: StatusPending,
 				},
 			}
+		} else if item.IsPRWait() {
+			pr := item.WaitForPR
+			htmlURL := ""
+			if pr.PRNumber > 0 {
+				htmlURL = fmt.Sprintf("https://github.com/%s/%s/pull/%d", pr.Owner, pr.Repo, pr.PRNumber)
+			}
+			items[i] = WorkflowItemState{
+				IsParallel: false,
+				IsPRWait:   true,
+				PRWait: &PRWaitState{
+					Name:       pr.Name,
+					Owner:      pr.Owner,
+					Repo:       pr.Repo,
+					HeadBranch: pr.HeadBranch,
+					PRNumber:   pr.PRNumber,
+					WaitFor:    pr.WaitFor,
+					Status:     StatusPending,
+					HTMLURL:    htmlURL,
+					Title:      pr.ResolvedTitle,
+				},
+			}
 		} else {
 			step := item.AsStep()
 			items[i] = WorkflowItemState{
 				IsParallel: false,
+				IsPRWait:   false,
 				Step: &StepState{
 					Name:     step.Name,
 					Instance: step.Instance,
@@ -409,4 +432,36 @@ func (c *workflowCallbacks) OnStepComplete(itemIndex, stepIndex int, name, resul
 		status = StatusFailed
 	}
 	c.state.UpdateStepStatus(itemIndex, stepIndex, status, result, errMsg, "")
+}
+
+func (c *workflowCallbacks) OnPRWaitStart(itemIndex int, pr *config.PRWait) {
+	if pr == nil {
+		return
+	}
+	c.state.StartPRWait(itemIndex, pr.Name, pr.Owner, pr.Repo, pr.HeadBranch, pr.WaitFor, pr.PRNumber, pr.ResolvedURL, pr.ResolvedTitle)
+}
+
+func (c *workflowCallbacks) OnPRWaitProgress(itemIndex int, pr *config.PRWait) {
+	if pr == nil {
+		return
+	}
+	c.state.UpdatePRWaitMetadata(itemIndex, pr.PRNumber, pr.ResolvedURL, pr.ResolvedTitle)
+}
+
+func (c *workflowCallbacks) OnPRWaitComplete(itemIndex int, pr *config.PRWait) {
+	if pr != nil {
+		c.state.UpdatePRWaitMetadata(itemIndex, pr.PRNumber, pr.ResolvedURL, pr.ResolvedTitle)
+	}
+	c.state.CompletePRWait(itemIndex)
+}
+
+func (c *workflowCallbacks) OnPRWaitFailed(itemIndex int, pr *config.PRWait, err error) {
+	errMsg := ""
+	if err != nil {
+		errMsg = err.Error()
+	}
+	if pr != nil {
+		c.state.UpdatePRWaitMetadata(itemIndex, pr.PRNumber, pr.ResolvedURL, pr.ResolvedTitle)
+	}
+	c.state.FailPRWait(itemIndex, errMsg)
 }

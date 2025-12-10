@@ -32,6 +32,21 @@
           :is-parallel="true"
           :steps="item.parallel?.steps"
         />
+        <PRWaitCard
+          v-else-if="item.isPRWait"
+          :name="item.prWait?.name || 'Wait for Pull Request'"
+          :owner="item.prWait?.owner"
+          :repo="item.prWait?.repo"
+          :head-branch="item.prWait?.headBranch"
+          :pr-number="item.prWait?.prNumber"
+          :wait-for="item.prWait?.waitFor"
+          :status="item.prWait?.status || 'pending'"
+          :html-url="item.prWait?.htmlUrl"
+          :pr-title="item.prWait?.title"
+          :error="item.prWait?.error"
+          :started-at="item.prWait?.startedAt"
+          :ended-at="item.prWait?.endedAt"
+        />
         <StepCard
           v-else
           :name="item.step?.name || 'Unknown'"
@@ -58,6 +73,7 @@
 import { computed } from 'vue'
 import StepCard from './StepCard.vue'
 import StatusBadge from './StatusBadge.vue'
+import PRWaitCard from './PRWaitCard.vue'
 
 const props = defineProps({
   workflow: Object
