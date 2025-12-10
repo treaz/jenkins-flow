@@ -8,7 +8,13 @@
           <span class="job" v-if="job">{{ job }}</span>
         </div>
       </div>
-      <StatusBadge :status="status" />
+      <component
+        :is="statusLinkTag"
+        v-bind="statusLinkProps"
+        class="status-link"
+      >
+        <StatusBadge :status="status" />
+      </component>
     </div>
     
     <div v-if="buildUrl" class="build-link">
@@ -69,6 +75,21 @@ const duration = computed(() => {
   if (diff < 3600) return `${Math.floor(diff / 60)}m ${diff % 60}s`
   return `${Math.floor(diff / 3600)}h ${Math.floor((diff % 3600) / 60)}m`
 })
+
+const hasBuildLink = computed(() => Boolean(props.buildUrl))
+
+const statusLinkTag = computed(() => (hasBuildLink.value ? 'a' : 'div'))
+
+const statusLinkProps = computed(() => {
+  if (!hasBuildLink.value) return {}
+  return {
+    href: props.buildUrl,
+    target: '_blank',
+    rel: 'noopener',
+    title: 'Open Jenkins build',
+    'aria-label': 'Open Jenkins build (opens in new tab)'
+  }
+})
 </script>
 
 <style scoped>
@@ -93,6 +114,15 @@ const duration = computed(() => {
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
+}
+
+.status-link {
+  text-decoration: none;
+  display: inline-flex;
+}
+
+.status-link[href] {
+  cursor: pointer;
 }
 
 .step-info {
