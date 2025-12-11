@@ -14,11 +14,17 @@
     </div>
     
     <div class="actions">
+      <div class="run-options" v-if="!isRunning">
+        <label class="checkbox-label">
+          <input type="checkbox" v-model="skipPRCheck">
+          Skip PR Wait
+        </label>
+      </div>
       <button 
         v-if="!isRunning"
         class="run-btn" 
         :disabled="!selectedWorkflow"
-        @click="$emit('run')"
+        @click="$emit('run', { skipPRCheck })"
       >
         Run Workflow
       </button>
@@ -52,6 +58,10 @@
 </template>
 
 <script setup>
+import { ref } from 'vue'
+
+const skipPRCheck = ref(false)
+
 defineProps({
   workflows: {
     type: Array,
@@ -194,4 +204,23 @@ defineEmits(['select', 'run', 'stop', 'change-log-level'])
   color: var(--text-primary);
   font-size: 14px;
 }
+
+.run-options {
+  margin-bottom: 12px;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.checkbox-label input {
+  cursor: pointer;
+}
+
 </style>

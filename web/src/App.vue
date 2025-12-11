@@ -120,11 +120,11 @@ const selectWorkflow = (path) => {
   loadWorkflowDefinition(path)
 }
 
-const triggerRun = async () => {
+const triggerRun = async (options = {}) => {
   if (!selectedWorkflow.value || isRunning.value) return
   
   try {
-    await runWorkflow(selectedWorkflow.value)
+    await runWorkflow(selectedWorkflow.value, options.skipPRCheck)
     toast.value.add({
       title: 'Workflow Started',
       message: `Successfully started ${getWorkflowName(selectedWorkflow.value)}`,

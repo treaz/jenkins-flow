@@ -22,7 +22,7 @@ type StepResult struct {
 }
 
 // Run executes the defined workflow, supporting both sequential and parallel steps.
-func Run(ctx context.Context, cfg *config.Config, l *logger.Logger) error {
+func Run(ctx context.Context, cfg *config.Config, l *logger.Logger, skipPRCheck bool) error {
 	l.Infof("Starting workflow execution...")
 	start := time.Now()
 
@@ -34,8 +34,12 @@ func Run(ctx context.Context, cfg *config.Config, l *logger.Logger) error {
 			l.Infof("[%d/%d] Waiting for %s (%s/%s) to be %s...",
 				i+1, len(cfg.Workflow), target, pr.Owner, pr.Repo, pr.WaitFor)
 
-			if err := runPRWait(ctx, cfg, pr, l, nil, i); err != nil {
-				return fmt.Errorf("PR wait %q failed: %w", pr.Name, err)
+			if skipPRCheck {
+				l.Infof("Skipping PR check as requested by user.")
+			} else {
+				if err := runPRWait(ctx, cfg, pr, l, nil, i); err != nil {
+					return fmt.Errorf("PR wait %q failed: %w", pr.Name, err)
+				}
 			}
 
 			resolved := describeResolvedPR(pr)
@@ -99,7 +103,7 @@ type WorkflowCallbacks interface {
 }
 
 // RunWithCallbacks executes the workflow with callback notifications.
-func RunWithCallbacks(ctx context.Context, cfg *config.Config, l *logger.Logger, callbacks WorkflowCallbacks) error {
+func RunWithCallbacks(ctx context.Context, cfg *config.Config, l *logger.Logger, callbacks WorkflowCallbacks, skipPRCheck bool) error {
 	l.Infof("Starting workflow execution...")
 	start := time.Now()
 
@@ -111,14 +115,24 @@ func RunWithCallbacks(ctx context.Context, cfg *config.Config, l *logger.Logger,
 			l.Infof("[%d/%d] Waiting for %s (%s/%s) to be %s...",
 				i+1, len(cfg.Workflow), target, pr.Owner, pr.Repo, pr.WaitFor)
 
-			if err := runPRWait(ctx, cfg, pr, l, callbacks, i); err != nil {
+			if skipPRCheck {
+				l.Infof("Skipping PR check as requested by user.")
 				if callbacks != nil {
-					callbacks.OnPRWaitFailed(i, pr, err)
+					// We might want to indicate it was skipped or just mark complete?
+					// Let's just mark complete immediately.
+					callbacks.OnPRWaitStart(i, pr)
+					callbacks.OnPRWaitComplete(i, pr)
 				}
-				return fmt.Errorf("PR wait %q failed: %w", pr.Name, err)
-			}
-			if callbacks != nil {
-				callbacks.OnPRWaitComplete(i, pr)
+			} else {
+				if err := runPRWait(ctx, cfg, pr, l, callbacks, i); err != nil {
+					if callbacks != nil {
+						callbacks.OnPRWaitFailed(i, pr, err)
+					}
+					return fmt.Errorf("PR wait %q failed: %w", pr.Name, err)
+				}
+				if callbacks != nil {
+					callbacks.OnPRWaitComplete(i, pr)
+				}
 			}
 
 			resolved := describeResolvedPR(pr)

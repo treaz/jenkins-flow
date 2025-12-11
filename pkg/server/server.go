@@ -259,7 +259,13 @@ func (s *Server) RunWorkflow(w http.ResponseWriter, r *http.Request) {
 	s.cancelFn = cancel
 	s.mu.Unlock()
 
-	go s.runWorkflow(ctx, cfg, workflowPath)
+	// Parse optional skipPRCheck
+	skipPRCheck := false
+	if req.SkipPRCheck != nil && *req.SkipPRCheck {
+		skipPRCheck = true
+	}
+
+	go s.runWorkflow(ctx, cfg, workflowPath, skipPRCheck)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "started"})
@@ -380,7 +386,7 @@ func (s *Server) configToStateItems(cfg *config.Config) []WorkflowItemState {
 }
 
 // runWorkflow executes the workflow and updates state.
-func (s *Server) runWorkflow(ctx context.Context, cfg *config.Config, workflowPath string) {
+func (s *Server) runWorkflow(ctx context.Context, cfg *config.Config, workflowPath string, skipPRCheck bool) {
 	defer func() {
 		s.mu.Lock()
 		s.cancelFn = nil
@@ -405,7 +411,7 @@ func (s *Server) runWorkflow(ctx context.Context, cfg *config.Config, workflowPa
 	// Create a state-aware runner
 	err := workflow.RunWithCallbacks(ctx, cfg, s.logger, &workflowCallbacks{
 		state: s.state,
-	})
+	}, skipPRCheck)
 
 	duration := time.Since(start)
 

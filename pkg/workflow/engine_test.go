@@ -203,7 +203,7 @@ func TestRun_MixedWorkflow(t *testing.T) {
 	}
 
 	l := logger.New(logger.Error)
-	err := Run(context.Background(), cfg, l)
+	err := Run(context.Background(), cfg, l, false)
 	if err != nil {
 		t.Fatalf("Run failed: %v", err)
 	}

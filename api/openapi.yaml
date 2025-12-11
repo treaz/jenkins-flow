@@ -149,6 +149,8 @@ components:
       properties:
         workflow:
           type: string
+        skipPRCheck:
+          type: boolean
     
     LogLevelRequest:
       type: object
