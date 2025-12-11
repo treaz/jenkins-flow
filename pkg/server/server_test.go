@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/treaz/jenkins-flow/pkg/api"
 	"github.com/treaz/jenkins-flow/pkg/logger"
 )
 
@@ -45,7 +46,7 @@ func TestHandleListWorkflows(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	// Call handler
-	srv.handleListWorkflows(w, req)
+	srv.ListWorkflows(w, req)
 
 	// Verify response
 	resp := w.Result()
@@ -53,7 +54,7 @@ func TestHandleListWorkflows(t *testing.T) {
 		t.Errorf("expected status OK, got %v", resp.Status)
 	}
 
-	var workflows []WorkflowInfo
+	var workflows []api.WorkflowInfo
 	if err := json.NewDecoder(resp.Body).Decode(&workflows); err != nil {
 		t.Fatal(err)
 	}
@@ -63,12 +64,12 @@ func TestHandleListWorkflows(t *testing.T) {
 		t.Fatalf("expected 1 workflow, got %d", len(workflows))
 	}
 
-	if workflows[0].Name != "Valid Workflow" {
-		t.Errorf("expected workflow name 'Valid Workflow', got %q", workflows[0].Name)
+	if workflows[0].Name == nil || *workflows[0].Name != "Valid Workflow" {
+		t.Errorf("expected workflow name 'Valid Workflow', got %v", workflows[0].Name)
 	}
 
 	expectedPath := filepath.Join(tmpDir, "valid.yaml")
-	if workflows[0].Path != expectedPath {
-		t.Errorf("expected path %q, got %q", expectedPath, workflows[0].Path)
+	if workflows[0].Path == nil || *workflows[0].Path != expectedPath {
+		t.Errorf("expected path %q, got %v", expectedPath, workflows[0].Path)
 	}
 }

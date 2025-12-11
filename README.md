@@ -197,3 +197,20 @@ To create a Slack webhook:
 4. Add a new webhook to a channel
 5. Copy the webhook URL
 
+
+## Development
+
+### API First Development
+
+This project follows an API-first approach using OpenAPI 3.0.
+
+1. **Modify API Spec**: Edit `api/openapi.yaml`.
+2. **Generate Code**: Run `make generate-api`.
+3. **Implement**: Update `pkg/server/server.go` to implement the generated interface.
+
+The Make target installs `oapi-codegen` and regenerates the server stubs in `pkg/api/server.gen.go`.
+
+### Swagger UI
+
+A Swagger UI is available at `http://localhost:PORT/swagger` for interactive API documentation and testing.
+

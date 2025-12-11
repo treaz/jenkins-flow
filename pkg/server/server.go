@@ -5,6 +5,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"net/http"
@@ -15,6 +16,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/treaz/jenkins-flow/pkg/api"
 	"github.com/treaz/jenkins-flow/pkg/config"
 	"github.com/treaz/jenkins-flow/pkg/logger"
 	"github.com/treaz/jenkins-flow/pkg/notifier"
@@ -56,40 +60,57 @@ func NewServer(port int, instancesPath, workflowsDir string, l *logger.Logger) *
 	}
 }
 
-// WorkflowInfo describes an available workflow.
-type WorkflowInfo struct {
-	Name string `json:"name"`
-	Path string `json:"path"`
-}
-
-// StatusResponse is the response for the /api/status endpoint.
-type StatusResponse struct {
-	Running  bool           `json:"running"`
-	Workflow *WorkflowState `json:"workflow,omitempty"`
-}
-
-// RunRequest is the request body for /api/run.
-type RunRequest struct {
-	Workflow string `json:"workflow"`
-}
-
 // Start starts the HTTP server.
 func (s *Server) Start() error {
-	mux := http.NewServeMux()
+	r := chi.NewRouter()
+
+	// Middleware
+	r.Use(middleware.Logger)
+	r.Use(middleware.Recoverer)
 
 	// API routes
-	mux.HandleFunc("/api/workflows", s.handleListWorkflows)
-	mux.HandleFunc("/api/workflows/", s.handleWorkflowDefinition)
-	mux.HandleFunc("/api/status", s.handleStatus)
-	mux.HandleFunc("/api/run", s.handleRun)
-	mux.HandleFunc("/api/stop", s.handleStop)
-	mux.HandleFunc("/api/settings/log-level", s.handleLogLevel)
+	api.HandlerFromMux(s, r)
+
+	// Swagger UI
+	r.Get("/api/openapi.json", s.handleOpenAPISpec)
+	r.Get("/swagger", s.handleSwaggerUI)
 
 	// Static files (Vue app)
 	if s.staticFS != nil {
-		mux.Handle("/", http.FileServer(http.FS(s.staticFS)))
+		fileServer := http.FileServer(http.FS(s.staticFS))
+		r.Handle("/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Check if the file exists in static FS, otherwise serve index.html (SPA)
+			path := r.URL.Path
+			if path == "/" {
+				fileServer.ServeHTTP(w, r)
+				return
+			}
+
+			// Try to open the file to see if it exists
+			f, err := s.staticFS.Open(strings.TrimPrefix(path, "/"))
+			if err == nil {
+				f.Close()
+				fileServer.ServeHTTP(w, r)
+				return
+			}
+
+			// Not found, serve index.html for SPA routing
+			// Re-open index.html
+			index, err := s.staticFS.Open("index.html")
+			if err != nil {
+				http.Error(w, "Index not found", http.StatusInternalServerError)
+				return
+			}
+			defer index.Close()
+			stat, _ := index.Stat()
+			if seeker, ok := index.(io.ReadSeeker); ok {
+				http.ServeContent(w, r, "index.html", stat.ModTime(), seeker)
+			} else {
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			}
+		}))
 	} else {
-		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		r.Get("/*", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/html")
 			w.Write([]byte(`<!DOCTYPE html>
 <html>
@@ -104,17 +125,12 @@ func (s *Server) Start() error {
 
 	addr := fmt.Sprintf(":%d", s.port)
 	log.Printf("Starting dashboard server on http://localhost%s", addr)
-	return http.ListenAndServe(addr, mux)
+	return http.ListenAndServe(addr, r)
 }
 
-// handleListWorkflows returns available workflow files.
-func (s *Server) handleListWorkflows(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	workflows := []WorkflowInfo{}
+// ListWorkflows returns available workflow files.
+func (s *Server) ListWorkflows(w http.ResponseWriter, r *http.Request) {
+	workflows := []api.WorkflowInfo{}
 
 	// Look for workflow files in the workflows directory
 	entries, err := os.ReadDir(s.workflowsDir)
@@ -136,9 +152,9 @@ func (s *Server) handleListWorkflows(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			workflows = append(workflows, WorkflowInfo{
-				Name: workflowName,
-				Path: fullPath,
+			workflows = append(workflows, api.WorkflowInfo{
+				Name: strPtr(workflowName),
+				Path: strPtr(fullPath),
 			})
 		}
 	}
@@ -147,34 +163,9 @@ func (s *Server) handleListWorkflows(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(workflows)
 }
 
-// handleWorkflowDefinition returns the static definition of a workflow for preview purposes.
-func (s *Server) handleWorkflowDefinition(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	const prefix = "/api/workflows/"
-	if !strings.HasPrefix(r.URL.Path, prefix) {
-		http.NotFound(w, r)
-		return
-	}
-
-	requested := strings.TrimPrefix(r.URL.Path, prefix)
-	if !strings.HasSuffix(requested, "/definition") {
-		http.NotFound(w, r)
-		return
-	}
-
-	requested = strings.TrimSuffix(requested, "/definition")
-	requested = strings.TrimSuffix(requested, "/")
-
-	if requested == "" {
-		http.Error(w, "Workflow path is required", http.StatusBadRequest)
-		return
-	}
-
-	workflowPath, err := url.PathUnescape(requested)
+// GetWorkflowDefinition returns the static definition of a workflow for preview purposes.
+func (s *Server) GetWorkflowDefinition(w http.ResponseWriter, r *http.Request, name string) {
+	workflowPath, err := url.PathUnescape(name)
 	if err != nil {
 		http.Error(w, "Invalid workflow path", http.StatusBadRequest)
 		return
@@ -198,56 +189,58 @@ func (s *Server) handleWorkflowDefinition(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	definition := &WorkflowState{
-		Name:   workflowPath,
-		Status: StatusPending,
-		Items:  s.configToStateItems(cfg),
+	// Helper to convert config items to initial internal state, then to API state
+	internalItems := s.configToStateItems(cfg)
+	// We need to construct a "dummy" pending state to convert to API response
+	dummyState := &WorkflowState{
+		Name:      workflowPath,
+		Status:    StatusPending,
+		Items:     internalItems,
+		StartedAt: nil,
 	}
 
+	response := s.internalToAPI(dummyState)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(definition)
+	json.NewEncoder(w).Encode(response)
 }
 
-// handleStatus returns the current workflow execution status.
-func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
+// GetStatus returns the current workflow execution status.
+func (s *Server) GetStatus(w http.ResponseWriter, r *http.Request) {
+	internalState := s.state.GetState()
+	var apiWorkflow *api.WorkflowState
+	if internalState != nil {
+		apiWorkflow = s.internalToAPI(internalState)
 	}
 
-	resp := StatusResponse{
-		Running:  s.state.IsRunning(),
-		Workflow: s.state.GetState(),
+	running := s.state.IsRunning()
+	resp := api.StatusResponse{
+		Running:  &running,
+		Workflow: apiWorkflow,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
 }
 
-// handleRun starts a workflow execution.
-func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
+// RunWorkflow starts a workflow execution.
+func (s *Server) RunWorkflow(w http.ResponseWriter, r *http.Request) {
 	// Check if already running
 	if s.state.IsRunning() {
 		http.Error(w, "A workflow is already running", http.StatusConflict)
 		return
 	}
 
-	var req RunRequest
+	var req api.RunRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	workflowPath := req.Workflow
-	if workflowPath == "" {
+	if req.Workflow == nil || *req.Workflow == "" {
 		http.Error(w, "Workflow path is required", http.StatusBadRequest)
 		return
 	}
+	workflowPath := *req.Workflow
 
 	// Load config
 	cfg, err := config.Load(s.instancesPath, workflowPath)
@@ -272,13 +265,8 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "started"})
 }
 
-// handleStop stops a running workflow.
-func (s *Server) handleStop(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
+// StopWorkflow stops a running workflow.
+func (s *Server) StopWorkflow(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -294,42 +282,38 @@ func (s *Server) handleStop(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "No workflow running", http.StatusNotFound)
 }
 
-// LogLevelRequest is the request body for changing log level
-type LogLevelRequest struct {
-	Level string `json:"level"`
+// GetLogLevel gets the current log level
+func (s *Server) GetLogLevel(w http.ResponseWriter, r *http.Request) {
+	level := s.logger.GetLevel().String()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(api.LogLevelRequest{Level: &level}) // Reusing Request struct for response as it matches shape
 }
 
-// handleLogLevel gets or sets the current log level
-func (s *Server) handleLogLevel(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodGet {
-		level := s.logger.GetLevel().String()
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"level": level})
+// SetLogLevel sets the current log level
+func (s *Server) SetLogLevel(w http.ResponseWriter, r *http.Request) {
+	var req api.LogLevelRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	if r.Method == http.MethodPost {
-		var req LogLevelRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "Invalid request body", http.StatusBadRequest)
-			return
-		}
-
-		lvl, err := logger.ParseLevel(req.Level)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("Invalid log level: %v", err), http.StatusBadRequest)
-			return
-		}
-
-		s.logger.SetLevel(lvl)
-		s.logger.Infof("Log level changed to %s", lvl.String())
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"level": lvl.String()})
+	if req.Level == nil {
+		http.Error(w, "Level is required", http.StatusBadRequest)
 		return
 	}
 
-	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	lvl, err := logger.ParseLevel(*req.Level)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Invalid log level: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	s.logger.SetLevel(lvl)
+	s.logger.Infof("Log level changed to %s", lvl.String())
+
+	levelStr := lvl.String()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(api.LogLevelRequest{Level: &levelStr})
 }
 
 // configToStateItems converts config workflow items to state items.
@@ -434,6 +418,97 @@ func (s *Server) runWorkflow(ctx context.Context, cfg *config.Config, workflowPa
 	}
 }
 
+// Helper functions for API conversion
+
+func strPtr(s string) *string {
+	return &s
+}
+
+func boolPtr(b bool) *bool {
+	return &b
+}
+
+func intPtr(i int) *int {
+	return &i
+}
+
+func (s *Server) internalToAPI(state *WorkflowState) *api.WorkflowState {
+	items := make([]api.WorkflowItemState, len(state.Items))
+	for i, item := range state.Items {
+		items[i] = s.internalItemToAPI(item)
+	}
+
+	st := string(state.Status)
+	return &api.WorkflowState{
+		Name:   strPtr(state.Name),
+		Status: strPtr(st),
+		Items:  &items,
+	}
+}
+
+func (s *Server) internalItemToAPI(item WorkflowItemState) api.WorkflowItemState {
+	res := api.WorkflowItemState{
+		IsParallel: boolPtr(item.IsParallel),
+		IsPRWait:   boolPtr(item.IsPRWait),
+	}
+
+	if item.Step != nil {
+		res.Step = s.internalStepToAPI(item.Step)
+	}
+
+	if item.Parallel != nil {
+		res.Parallel = s.internalParallelToAPI(item.Parallel)
+	}
+
+	if item.PRWait != nil {
+		res.PrWait = s.internalPRWaitToAPI(item.PRWait)
+	}
+
+	return res
+}
+
+func (s *Server) internalStepToAPI(step *StepState) *api.StepState {
+	st := string(step.Status)
+	return &api.StepState{
+		Name:     strPtr(step.Name),
+		Instance: strPtr(step.Instance),
+		Job:      strPtr(step.Job),
+		Status:   strPtr(st),
+		Result:   strPtr(step.Result),
+		Error:    strPtr(step.Error),
+		BuildUrl: strPtr(step.BuildURL),
+	}
+}
+
+func (s *Server) internalParallelToAPI(p *ParallelGroupState) *api.ParallelGroupState {
+	steps := make([]api.StepState, len(p.Steps))
+	for i, step := range p.Steps {
+		steps[i] = *s.internalStepToAPI(&step)
+	}
+
+	st := string(p.Status)
+	return &api.ParallelGroupState{
+		Name:   strPtr(p.Name),
+		Status: strPtr(st),
+		Steps:  &steps,
+	}
+}
+
+func (s *Server) internalPRWaitToAPI(pr *PRWaitState) *api.PRWaitState {
+	st := string(pr.Status)
+	return &api.PRWaitState{
+		Name:       strPtr(pr.Name),
+		Owner:      strPtr(pr.Owner),
+		Repo:       strPtr(pr.Repo),
+		HeadBranch: strPtr(pr.HeadBranch),
+		PrNumber:   intPtr(pr.PRNumber),
+		WaitFor:    strPtr(pr.WaitFor),
+		Status:     strPtr(st),
+		HtmlUrl:    strPtr(pr.HTMLURL),
+		Title:      strPtr(pr.Title),
+	}
+}
+
 // workflowCallbacks implements the callback interface for state updates.
 type workflowCallbacks struct {
 	state *StateManager
@@ -485,4 +560,42 @@ func (c *workflowCallbacks) OnPRWaitFailed(itemIndex int, pr *config.PRWait, err
 		c.state.UpdatePRWaitMetadata(itemIndex, pr.PRNumber, pr.ResolvedURL, pr.ResolvedTitle)
 	}
 	c.state.FailPRWait(itemIndex, errMsg)
+}
+
+// handleOpenAPISpec serves the OpenAPI specification as JSON
+func (s *Server) handleOpenAPISpec(w http.ResponseWriter, r *http.Request) {
+	spec, err := api.GetSwagger()
+	if err != nil {
+		http.Error(w, "Error loading spec", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(spec)
+}
+
+// handleSwaggerUI serves the Swagger UI HTML page
+func (s *Server) handleSwaggerUI(w http.ResponseWriter, r *http.Request) {
+	html := `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>API Documentation</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui.css" />
+</head>
+<body>
+<div id="swagger-ui"></div>
+<script src="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui-bundle.js" crossorigin></script>
+<script>
+  window.onload = () => {
+    window.ui = SwaggerUIBundle({
+      url: '/api/openapi.json',
+      dom_id: '#swagger-ui',
+    });
+  };
+</script>
+</body>
+</html>`
+	w.Header().Set("Content-Type", "text/html")
+	w.Write([]byte(html))
 }
