@@ -18,7 +18,7 @@
     </div>
     
     <div v-if="buildUrl" class="build-link">
-      <a :href="buildUrl" target="_blank" rel="noopener">View Build →</a>
+      <a :href="buildUrl" target="_blank" rel="noopener">{{ buildUrl }}</a>
     </div>
     
     <div v-if="error" class="error-message">
@@ -163,6 +163,7 @@ const statusLinkProps = computed(() => {
   text-decoration: none;
   font-size: 13px;
   font-weight: 500;
+  overflow-wrap: anywhere;
 }
 
 .build-link a:hover {

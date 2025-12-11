@@ -144,7 +144,12 @@ func (sm *StateManager) UpdateStepStatus(itemIndex int, stepIndex int, status St
 	step.Status = status
 	step.Result = result
 	step.Error = errMsg
-	step.BuildURL = buildURL
+	switch {
+	case status == StatusRunning && buildURL == "":
+		step.BuildURL = ""
+	case buildURL != "":
+		step.BuildURL = buildURL
+	}
 
 	if status == StatusRunning && step.StartedAt == nil {
 		step.StartedAt = &now

@@ -62,7 +62,7 @@ func TestRunStep_Success(t *testing.T) {
 	}
 
 	l := logger.New(logger.Error)
-	result, err := runStep(context.Background(), cfg, step, l)
+	result, err := runStep(context.Background(), cfg, step, l, nil, 0, 0)
 	if err != nil {
 		t.Fatalf("runStep failed: %v", err)
 	}

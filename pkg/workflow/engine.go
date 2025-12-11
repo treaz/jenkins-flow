@@ -69,7 +69,7 @@ func Run(ctx context.Context, cfg *config.Config, l *logger.Logger) error {
 			step := item.AsStep()
 			l.Infof("[Step %d/%d] Starting step %q on instance %q...", i+1, len(cfg.Workflow), step.Name, step.Instance)
 
-			result, err := runStep(ctx, cfg, step, l)
+			result, err := runStep(ctx, cfg, step, l, nil, i, 0)
 			if err != nil {
 				return fmt.Errorf("step %q failed: %w", step.Name, err)
 			}
@@ -156,7 +156,7 @@ func RunWithCallbacks(ctx context.Context, cfg *config.Config, l *logger.Logger,
 				callbacks.OnStepStart(i, 0, step.Name, "")
 			}
 
-			result, err := runStep(ctx, cfg, step, l)
+			result, err := runStep(ctx, cfg, step, l, callbacks, i, 0)
 
 			if callbacks != nil {
 				callbacks.OnStepComplete(i, 0, step.Name, result, err)
@@ -181,7 +181,7 @@ func RunWithCallbacks(ctx context.Context, cfg *config.Config, l *logger.Logger,
 }
 
 // runStep executes a single step and returns the build result.
-func runStep(ctx context.Context, cfg *config.Config, step config.Step, l *logger.Logger) (string, error) {
+func runStep(ctx context.Context, cfg *config.Config, step config.Step, l *logger.Logger, callbacks WorkflowCallbacks, itemIndex, stepIndex int) (string, error) {
 	instanceCfg, ok := cfg.Instances[step.Instance]
 	if !ok {
 		return "", fmt.Errorf("unknown instance %q", step.Instance)
@@ -209,6 +209,10 @@ func runStep(ctx context.Context, cfg *config.Config, step config.Step, l *logge
 		return "", fmt.Errorf("failed waiting for queue: %w", err)
 	}
 	l.Infof("  -> [%s] Job started: %s", step.Name, buildURL)
+
+	if callbacks != nil && buildURL != "" {
+		callbacks.OnStepStart(itemIndex, stepIndex, step.Name, buildURL)
+	}
 
 	// 3. Wait for Build
 	l.Infof("  -> [%s] Waiting for completion...", step.Name)
@@ -324,7 +328,7 @@ func runParallelGroup(ctx context.Context, cfg *config.Config, steps []config.St
 	for i, step := range steps {
 		i, step := i, step // capture loop variables
 		g.Go(func() error {
-			result, err := runStep(gctx, cfg, step, l)
+			result, err := runStep(gctx, cfg, step, l, nil, 0, i)
 
 			resultsMu.Lock()
 			results[i] = StepResult{
@@ -364,7 +368,7 @@ func runParallelGroupWithCallbacks(ctx context.Context, cfg *config.Config, step
 				callbacks.OnStepStart(itemIndex, i, step.Name, "")
 			}
 
-			result, err := runStep(gctx, cfg, step, l)
+			result, err := runStep(gctx, cfg, step, l, callbacks, itemIndex, i)
 
 			resultsMu.Lock()
 			results[i] = StepResult{
