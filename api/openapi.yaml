@@ -1,0 +1,235 @@
+openapi: 3.0.0
+info:
+  title: Jenkins Flow API
+  version: 1.0.0
+  description: API for Jenkins Flow Dashboard
+servers:
+  - url: /
+paths:
+  /api/workflows:
+    get:
+      summary: List available workflows
+      operationId: listWorkflows
+      responses:
+        '200':
+          description: A list of workflows
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkflowInfo'
+  /api/workflows/{name}/definition:
+    get:
+      summary: Get workflow definition
+      operationId: getWorkflowDefinition
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+          description: encoded path or name of the workflow
+      responses:
+        '200':
+          description: Workflow definition
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowState'
+        '404':
+          description: Workflow not found
+  /api/status:
+    get:
+      summary: Get current workflow status
+      operationId: getStatus
+      responses:
+        '200':
+          description: Current status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+  /api/run:
+    post:
+      summary: Start a workflow
+      operationId: runWorkflow
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunRequest'
+      responses:
+        '200':
+          description: Workflow started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+        '400':
+          description: Invalid request
+        '409':
+          description: Workflow already running
+  /api/stop:
+    post:
+      summary: Stop the running workflow
+      operationId: stopWorkflow
+      responses:
+        '200':
+          description: Workflow stopped
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+        '404':
+          description: No workflow running
+  /api/settings/log-level:
+    get:
+      summary: Get current log level
+      operationId: getLogLevel
+      responses:
+        '200':
+          description: Current log level
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  level:
+                    type: string
+    post:
+      summary: Set log level
+      operationId: setLogLevel
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogLevelRequest'
+      responses:
+        '200':
+          description: Log level set
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  level:
+                    type: string
+        '400':
+          description: Invalid log level
+
+components:
+  schemas:
+    WorkflowInfo:
+      type: object
+      properties:
+        name:
+          type: string
+        path:
+          type: string
+    
+    StatusResponse:
+      type: object
+      properties:
+        running:
+          type: boolean
+        workflow:
+          $ref: '#/components/schemas/WorkflowState'
+    
+    RunRequest:
+      type: object
+      properties:
+        workflow:
+          type: string
+    
+    LogLevelRequest:
+      type: object
+      properties:
+        level:
+          type: string
+    
+    WorkflowState:
+      type: object
+      properties:
+        name:
+          type: string
+        status:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowItemState'
+    
+    WorkflowItemState:
+      type: object
+      properties:
+        isParallel:
+          type: boolean
+        isPRWait:
+          type: boolean
+        step:
+          $ref: '#/components/schemas/StepState'
+        parallel:
+          $ref: '#/components/schemas/ParallelGroupState'
+        prWait:
+          $ref: '#/components/schemas/PRWaitState'
+    
+    StepState:
+      type: object
+      properties:
+        name:
+          type: string
+        instance:
+          type: string
+        job:
+          type: string
+        status:
+          type: string
+        result:
+          type: string
+        error:
+          type: string
+        buildUrl:
+          type: string
+    
+    ParallelGroupState:
+      type: object
+      properties:
+        name:
+          type: string
+        status:
+          type: string
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/StepState'
+
+    PRWaitState:
+      type: object
+      properties:
+        name:
+          type: string
+        owner:
+          type: string
+        repo:
+          type: string
+        headBranch:
+          type: string
+        prNumber:
+          type: integer
+        waitFor:
+          type: string
+        status:
+          type: string
+        htmlUrl:
+          type: string
+        title:
+          type: string

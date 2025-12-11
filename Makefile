@@ -13,6 +13,13 @@ build-web:
 	mkdir -p pkg/server/static
 	cp -r web/dist/* pkg/server/static/
 
+## generate-api: Generate Go server code from OpenAPI spec
+generate-api:
+	go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
+	mkdir -p pkg/api
+	oapi-codegen -config api/config.yaml api/openapi.yaml
+
+
 ## build: Build the binary (includes frontend)
 build: build-web
 	go build -o $(BINARY_NAME) $(MAIN_PATH)
