@@ -1,0 +1,4 @@
+workflow:
+  - parallel:
+      name: "Empty Group"
+      steps: []

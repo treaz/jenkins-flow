@@ -1,0 +1,25 @@
+workflow:
+  - name: "Build"
+    instance: us
+    job: "/job/build"
+  - parallel:
+      name: "Deploy to All Regions"
+      steps:
+        - name: "Deploy US"
+          instance: us
+          job: "/job/deploy"
+          params:
+            REGION: "us-east-1"
+        - name: "Deploy EU"
+          instance: eu
+          job: "/job/deploy"
+          params:
+            REGION: "eu-west-1"
+        - name: "Deploy APAC"
+          instance: apac
+          job: "/job/deploy"
+          params:
+            REGION: "ap-southeast-1"
+  - name: "Integration Tests"
+    instance: us
+    job: "/job/integration-tests"

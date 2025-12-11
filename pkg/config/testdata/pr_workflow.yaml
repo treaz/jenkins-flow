@@ -1,0 +1,10 @@
+workflow:
+  - wait_for_pr:
+      name: "Wait for Release"
+      owner: "treaz"
+      repo: "monitor"
+      pr_number: 42
+      wait_for: "merged"
+  - name: "Build"
+    instance: local
+    job: "/job/build"

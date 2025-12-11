@@ -1,0 +1,10 @@
+instances:
+  us:
+    url: http://jenkins-us.example.com
+    token: "user:token-us"
+  eu:
+    url: http://jenkins-eu.example.com
+    token: "user:token-eu"
+  apac:
+    url: http://jenkins-apac.example.com
+    token: "user:token-apac"

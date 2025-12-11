@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
-	"os"
 	"os/exec"
 	"time"
 )
@@ -33,24 +32,13 @@ func New(cfg Config) *Notifier {
 	return &Notifier{config: cfg}
 }
 
-// NewFromEnv creates a new Notifier with configuration from environment variables.
-// Environment variables:
-//   - SLACK_WEBHOOK_URL: Slack incoming webhook URL (enables Slack notifications)
-//   - SLACK_CHANNEL: Optional channel override
-//   - SLACK_USERNAME: Optional username override
-func NewFromEnv() *Notifier {
-	var slackCfg *SlackConfig
-
-	webhookURL := os.Getenv("SLACK_WEBHOOK_URL")
-	if webhookURL != "" {
-		slackCfg = &SlackConfig{
-			WebhookURL: webhookURL,
-			Channel:    os.Getenv("SLACK_CHANNEL"),
-			Username:   os.Getenv("SLACK_USERNAME"),
-		}
+// NewFromWebhook creates a Notifier configured with the given Slack webhook URL.
+// When webhookURL is empty Slack notifications remain disabled.
+func NewFromWebhook(webhookURL string) *Notifier {
+	if webhookURL == "" {
+		return New(Config{})
 	}
-
-	return New(Config{Slack: slackCfg})
+	return New(Config{Slack: &SlackConfig{WebhookURL: webhookURL}})
 }
 
 // Notify sends a notification through all configured channels.
@@ -65,6 +53,14 @@ func (n *Notifier) Notify(success bool, title, message string) {
 	if n.config.Slack != nil {
 		sendSlackNotification(n.config.Slack, success, title, message)
 	}
+}
+
+// HasSlack reports whether Slack notifications are configured.
+func (n *Notifier) HasSlack() bool {
+	if n == nil {
+		return false
+	}
+	return n.config.Slack != nil && n.config.Slack.WebhookURL != ""
 }
 
 // sendMacOSNotification sends a desktop notification using terminal-notifier.

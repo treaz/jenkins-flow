@@ -1,0 +1,6 @@
+workflow:
+  - parallel:
+      steps:
+        - name: "Step 1"
+          instance: unknown
+          job: "/job/test"

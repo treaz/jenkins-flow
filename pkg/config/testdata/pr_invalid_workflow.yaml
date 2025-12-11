@@ -1,0 +1,8 @@
+workflow:
+  - wait_for_pr:
+      name: "Invalid Wait"
+      owner: "treaz"
+      repo: "monitor"
+      pr_number: 42
+      head_branch: "release/v1"
+      wait_for: "merged"

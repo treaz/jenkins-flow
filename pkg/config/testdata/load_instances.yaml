@@ -1,0 +1,7 @@
+instances:
+  local:
+    url: http://localhost:8080
+    auth_env: TEST_ENV_VAR
+  direct:
+    url: http://jenkins.example.com
+    token: "user:token"

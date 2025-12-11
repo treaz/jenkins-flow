@@ -1,0 +1,4 @@
+workflow:
+  - name: "Step 1"
+    instance: bad
+    job: "/job/test"

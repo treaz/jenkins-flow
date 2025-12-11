@@ -80,7 +80,20 @@ github:
   # token: "ghp_xxxxxxxxxxxxxxxxxxxx"
 ```
 
-2. **Start the Server**:
+Optionally set a workflow-scoped Slack webhook alongside the workflow name to control where completion notifications are delivered:
+
+```yaml
+name: "Deploy Payments API"
+slack_webhook: "https://hooks.slack.com/services/T000/B000/XXXX"
+workflow:
+  - name: "Deploy US"
+    instance: prod-us
+    job: "/job/deploy"
+```
+
+If you omit `slack_webhook`, Jenkins Flow logs a warning and skips Slack delivery (macOS notifications still fire).
+
+1. **Start the Server**:
 
 ```bash
 # Using Makefile
@@ -90,11 +103,12 @@ make serve
 ./jenkins-flow -port 32567
 ```
 
-3. **Open the Dashboard**:
+1. **Open the Dashboard**:
 
 Open your browser to `http://localhost:32567`.
 
 From the dashboard you can:
+
 - See all available workflows in the `workflows/` directory.
 - Trigger workflows.
 - View real-time logs and step status.
@@ -173,16 +187,7 @@ terminal-notifier -title "Jenkins Flow" -message "Workflow finished"
 
 ### Slack Integration (Optional)
 
-To also receive Slack notifications, set the following environment variables:
-
-```bash
-# Required: Slack incoming webhook URL
-export SLACK_WEBHOOK_URL="https://hooks.slack.com/services/XXXX/YYYY/ZZZZ"
-
-# Optional: Override channel and username
-export SLACK_CHANNEL="#deployments"
-export SLACK_USERNAME="Jenkins Flow"
-```
+Slack notifications are powered by the `slack_webhook` property inside each workflow file. Define it alongside the workflow name to opt in to Slack delivery; omit it to disable Slack for that workflow.
 
 To create a Slack webhook:
 

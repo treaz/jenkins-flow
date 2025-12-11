@@ -1,0 +1,3 @@
+name: "My Workflow"
+workflow:
+  - name: step1

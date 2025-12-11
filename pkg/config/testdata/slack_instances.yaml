@@ -1,0 +1,4 @@
+instances:
+  primary:
+    url: http://jenkins-primary.example.com
+    token: "user:token"

@@ -1,0 +1,6 @@
+instances:
+  local:
+    url: http://localhost:8080
+    token: "user:token"
+github:
+  token: "gh-token"

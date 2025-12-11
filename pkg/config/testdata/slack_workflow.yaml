@@ -1,0 +1,6 @@
+name: "Deploy API"
+slack_webhook: "https://hooks.slack.com/services/T000/B000/XXXX"
+workflow:
+  - name: "Deploy"
+    instance: primary
+    job: "/job/deploy"

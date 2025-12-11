@@ -97,10 +97,11 @@ func (w *WorkflowItem) AsStep() Step {
 }
 
 type Config struct {
-	Name      string              `yaml:"name"`
-	Instances map[string]Instance `yaml:"instances"`
-	GitHub    *GitHubConfig       `yaml:"github,omitempty"` // Global GitHub config
-	Workflow  []WorkflowItem      `yaml:"workflow"`
+	Name         string              `yaml:"name"`
+	SlackWebhook string              `yaml:"slack_webhook,omitempty"`
+	Instances    map[string]Instance `yaml:"instances"`
+	GitHub       *GitHubConfig       `yaml:"github,omitempty"` // Global GitHub config
+	Workflow     []WorkflowItem      `yaml:"workflow"`
 }
 
 func Load(instancesPath, workflowPath string) (*Config, error) {
@@ -125,8 +126,9 @@ func Load(instancesPath, workflowPath string) (*Config, error) {
 	}
 
 	var workflowCfg struct {
-		Name     string         `yaml:"name"`
-		Workflow []WorkflowItem `yaml:"workflow"`
+		Name         string         `yaml:"name"`
+		SlackWebhook string         `yaml:"slack_webhook,omitempty"`
+		Workflow     []WorkflowItem `yaml:"workflow"`
 	}
 	if err := yaml.Unmarshal(workflowData, &workflowCfg); err != nil {
 		return nil, fmt.Errorf("failed to parse workflow config: %w", err)
@@ -134,10 +136,11 @@ func Load(instancesPath, workflowPath string) (*Config, error) {
 
 	// 3. Merge
 	cfg := &Config{
-		Name:      workflowCfg.Name,
-		Instances: instancesCfg.Instances,
-		GitHub:    instancesCfg.GitHub,
-		Workflow:  workflowCfg.Workflow,
+		Name:         workflowCfg.Name,
+		SlackWebhook: workflowCfg.SlackWebhook,
+		Instances:    instancesCfg.Instances,
+		GitHub:       instancesCfg.GitHub,
+		Workflow:     workflowCfg.Workflow,
 	}
 
 	if err := cfg.validate(); err != nil {

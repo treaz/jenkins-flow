@@ -1,0 +1,6 @@
+workflow:
+  - wait_for_pr:
+      name: "Invalid Wait"
+      owner: "treaz"
+      repo: "monitor"
+      wait_for: "merged"

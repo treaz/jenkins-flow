@@ -13,9 +13,11 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/treaz/jenkins-flow/pkg/config"
 	"github.com/treaz/jenkins-flow/pkg/logger"
+	"github.com/treaz/jenkins-flow/pkg/notifier"
 	"github.com/treaz/jenkins-flow/pkg/workflow"
 )
 
@@ -264,7 +266,7 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 	s.cancelFn = cancel
 	s.mu.Unlock()
 
-	go s.runWorkflow(ctx, cfg)
+	go s.runWorkflow(ctx, cfg, workflowPath)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "started"})
@@ -394,22 +396,41 @@ func (s *Server) configToStateItems(cfg *config.Config) []WorkflowItemState {
 }
 
 // runWorkflow executes the workflow and updates state.
-func (s *Server) runWorkflow(ctx context.Context, cfg *config.Config) {
+func (s *Server) runWorkflow(ctx context.Context, cfg *config.Config, workflowPath string) {
 	defer func() {
 		s.mu.Lock()
 		s.cancelFn = nil
 		s.mu.Unlock()
 	}()
 
+	start := time.Now()
+	notify := notifier.NewFromWebhook(cfg.SlackWebhook)
+
+	if !notify.HasSlack() {
+		s.logger.Infof("WARN: Slack notifications disabled for workflow %q (define slack_webhook)", workflowPath)
+	}
+
+	displayName := cfg.Name
+	if displayName == "" {
+		displayName = filepath.Base(workflowPath)
+	}
+	if displayName == "" {
+		displayName = "Workflow"
+	}
+
 	// Create a state-aware runner
 	err := workflow.RunWithCallbacks(ctx, cfg, s.logger, &workflowCallbacks{
 		state: s.state,
 	})
 
+	duration := time.Since(start)
+
 	if err != nil {
 		s.state.CompleteWorkflow(false, err.Error())
+		notify.Notify(false, displayName, fmt.Sprintf("Failed after %s: %v", duration.Round(time.Second), err))
 	} else {
 		s.state.CompleteWorkflow(true, "")
+		notify.Notify(true, displayName, fmt.Sprintf("Completed successfully in %s", duration.Round(time.Second)))
 	}
 }
 

@@ -1,0 +1,4 @@
+instances:
+  local:
+    url: "http://localhost"
+    token: "user:token"
