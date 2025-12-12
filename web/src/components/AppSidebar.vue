@@ -15,6 +15,17 @@
     
     <div class="actions">
       <div class="run-options" v-if="!isRunning">
+        <!-- Dynamic Inputs -->
+        <div v-for="(value, key) in inputs" :key="key" class="input-group">
+          <label :for="key">{{ key }}</label>
+          <input 
+            :id="key"
+            v-model="inputs[key]"
+            type="text"
+            class="input-field"
+          >
+        </div>
+
         <label class="checkbox-label">
           <input type="checkbox" v-model="skipPRCheck">
           Skip PR Wait
@@ -24,7 +35,7 @@
         v-if="!isRunning"
         class="run-btn" 
         :disabled="!selectedWorkflow"
-        @click="$emit('run', { skipPRCheck })"
+        @click="handleRun"
       >
         Run Workflow
       </button>
@@ -58,11 +69,12 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 
 const skipPRCheck = ref(false)
+const inputs = ref({})
 
-defineProps({
+const props = defineProps({
   workflows: {
     type: Array,
     required: true
@@ -70,6 +82,10 @@ defineProps({
   selectedWorkflow: {
     type: String,
     default: ''
+  },
+  selectedDefinition: {
+    type: Object,
+    default: null
   },
   isRunning: {
     type: Boolean,
@@ -81,7 +97,23 @@ defineProps({
   }
 })
 
-defineEmits(['select', 'run', 'stop', 'change-log-level'])
+const emit = defineEmits(['select', 'run', 'stop', 'change-log-level'])
+
+watch(() => props.selectedDefinition, (newDef) => {
+  if (newDef && newDef.inputs) {
+    // Clone config inputs to local state
+    inputs.value = { ...newDef.inputs }
+  } else {
+    inputs.value = {}
+  }
+}, { immediate: true })
+
+const handleRun = () => {
+  emit('run', { 
+    skipPRCheck: skipPRCheck.value,
+    inputs: inputs.value
+  })
+}
 </script>
 
 <style scoped>
@@ -195,6 +227,16 @@ defineEmits(['select', 'run', 'stop', 'change-log-level'])
   color: var(--text-secondary);
 }
 
+.input-field {
+  width: 100%;
+  padding: 8px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
 .select-input {
   width: 100%;
   padding: 8px;
@@ -206,7 +248,10 @@ defineEmits(['select', 'run', 'stop', 'change-log-level'])
 }
 
 .run-options {
-  margin-bottom: 12px;
+  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .checkbox-label {
@@ -221,6 +266,18 @@ defineEmits(['select', 'run', 'stop', 'change-log-level'])
 
 .checkbox-label input {
   cursor: pointer;
+}
+
+.input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.input-group label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
 }
 
 </style>

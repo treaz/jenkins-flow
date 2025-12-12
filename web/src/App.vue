@@ -6,6 +6,7 @@
       <AppSidebar 
         :workflows="workflows"
         :selected-workflow="selectedWorkflow"
+        :selected-definition="displayWorkflow"
         :is-running="isRunning"
         :log-level="logLevel"
         @select="selectWorkflow"
@@ -124,7 +125,7 @@ const triggerRun = async (options = {}) => {
   if (!selectedWorkflow.value || isRunning.value) return
   
   try {
-    await runWorkflow(selectedWorkflow.value, options.skipPRCheck)
+    await runWorkflow(selectedWorkflow.value, options)
     toast.value.add({
       title: 'Workflow Started',
       message: `Successfully started ${getWorkflowName(selectedWorkflow.value)}`,

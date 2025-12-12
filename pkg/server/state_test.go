@@ -17,7 +17,7 @@ func TestUpdateStepStatusBuildURLPersistence(t *testing.T) {
 		},
 	}
 
-	sm.StartWorkflow("test", items)
+	sm.StartWorkflow("test", nil, items)
 
 	sm.UpdateStepStatus(0, 0, StatusRunning, "", "", "")
 	if got := sm.GetState().Items[0].Step.BuildURL; got != "" {

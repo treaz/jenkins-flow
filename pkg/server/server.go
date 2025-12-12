@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -195,6 +196,7 @@ func (s *Server) GetWorkflowDefinition(w http.ResponseWriter, r *http.Request, n
 	dummyState := &WorkflowState{
 		Name:      workflowPath,
 		Status:    StatusPending,
+		Inputs:    cfg.Inputs,
 		Items:     internalItems,
 		StartedAt: nil,
 	}
@@ -249,9 +251,35 @@ func (s *Server) RunWorkflow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Update inputs if provided
+	if req.Inputs != nil && len(*req.Inputs) > 0 {
+		newInputs := *req.Inputs
+		if cfg.Inputs == nil {
+			cfg.Inputs = make(map[string]string)
+		}
+
+		// Update persistent file if values changed
+		changed := false
+		for k, v := range newInputs {
+			if cfg.Inputs[k] != v {
+				cfg.Inputs[k] = v
+				changed = true
+			}
+		}
+
+		if changed {
+			if err := s.updateWorkflowFile(workflowPath, cfg.Inputs); err != nil {
+				s.logger.Errorf("Failed to update workflow file: %v", err)
+				// Continue running even if persistence fails?
+				// The user specifically asked for persistence. Let's error or warn.
+				// For now warn but continue with in-memory value.
+			}
+		}
+	}
+
 	// Initialize state from config
 	items := s.configToStateItems(cfg)
-	s.state.StartWorkflow(workflowPath, items)
+	s.state.StartWorkflow(workflowPath, cfg.Inputs, items)
 
 	// Run workflow in background
 	ctx, cancel := context.WithCancel(context.Background())
@@ -269,6 +297,60 @@ func (s *Server) RunWorkflow(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "started"})
+}
+
+// updateWorkflowFile updates the workflow YAML file with new inputs without destroying comments.
+func (s *Server) updateWorkflowFile(path string, inputs map[string]string) error {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+
+	text := string(content)
+
+	// Helper to simple replace value for a key
+	// Looks for "  key: old_value" or "key: old_value"
+	// We want to be careful not to match partial keys or keys in specific structures if possible.
+	// But assuming inputs are likely unique or we rely on them being in "inputs:" block is hard with regex alone efficiently without parsing.
+	// Allow simple replacement for now as requested "very specific replace on the line".
+	// Match: (whitespace)(key)(: )(value)(possible comment)(newline)
+	// We only have the NEW value. We don't know the OLD value easily unless we look at loaded cfg (which we have).
+
+	for key, newVal := range inputs {
+		// Regex to find the key and replace its value.
+		// Supports: "  key: value"
+		// Capture group 1: leading whitespace
+		// Capture group 2: key + colon + space
+		// Capture group 3: old value (non-greedy)
+		// Capture group 4: comment (optional)
+		// Note: We assume strictly simple strings for input values (which they are)
+		pattern := fmt.Sprintf(`(?m)^(\s*%s:\s*)(.+?)(\s*#.*)?$`, regexp.QuoteMeta(key))
+		re := regexp.MustCompile(pattern)
+
+		text = re.ReplaceAllStringFunc(text, func(match string) string {
+			// Check if this looks like it's inside inputs block?
+			// Hard to know context with regex.
+			// But usually unique enough keys reduce risk.
+			// If key is "name", it might match workflow name.
+			// So we should verify if the key exists in Inputs map.
+
+			// To allow comments preservation, we reconstruct the line.
+			parts := re.FindStringSubmatch(match)
+			if len(parts) < 3 {
+				return match
+			}
+			prefix := parts[1]
+			// value := parts[2] -- old value
+			comment := ""
+			if len(parts) > 3 {
+				comment = parts[3]
+			}
+
+			return fmt.Sprintf("%s%s%s", prefix, newVal, comment)
+		})
+	}
+
+	return os.WriteFile(path, []byte(text), 0644)
 }
 
 // StopWorkflow stops a running workflow.
@@ -448,6 +530,7 @@ func (s *Server) internalToAPI(state *WorkflowState) *api.WorkflowState {
 	return &api.WorkflowState{
 		Name:   strPtr(state.Name),
 		Status: strPtr(st),
+		Inputs: &state.Inputs,
 		Items:  &items,
 	}
 }

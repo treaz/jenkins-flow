@@ -65,6 +65,7 @@ type WorkflowItemState struct {
 type WorkflowState struct {
 	Name      string              `json:"name"`
 	Status    StepStatus          `json:"status"`
+	Inputs    map[string]string   `json:"inputs"`
 	Items     []WorkflowItemState `json:"items"`
 	StartedAt *time.Time          `json:"startedAt,omitempty"`
 	EndedAt   *time.Time          `json:"endedAt,omitempty"`
@@ -103,7 +104,7 @@ func (sm *StateManager) GetState() *WorkflowState {
 }
 
 // StartWorkflow initializes state for a new workflow execution.
-func (sm *StateManager) StartWorkflow(name string, items []WorkflowItemState) {
+func (sm *StateManager) StartWorkflow(name string, inputs map[string]string, items []WorkflowItemState) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
@@ -111,6 +112,7 @@ func (sm *StateManager) StartWorkflow(name string, items []WorkflowItemState) {
 	sm.current = &WorkflowState{
 		Name:      name,
 		Status:    StatusRunning,
+		Inputs:    inputs,
 		Items:     items,
 		StartedAt: &now,
 	}

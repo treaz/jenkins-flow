@@ -101,7 +101,18 @@ type Config struct {
 	SlackWebhook string              `yaml:"slack_webhook,omitempty"`
 	Instances    map[string]Instance `yaml:"instances"`
 	GitHub       *GitHubConfig       `yaml:"github,omitempty"` // Global GitHub config
+	Inputs       map[string]string   `yaml:"inputs,omitempty"`
 	Workflow     []WorkflowItem      `yaml:"workflow"`
+}
+
+// Substitute replaces ${var} placeholders in text with values from vars.
+func Substitute(text string, vars map[string]string) string {
+	return os.Expand(text, func(key string) string {
+		if val, ok := vars[key]; ok {
+			return val
+		}
+		return ""
+	})
 }
 
 func Load(instancesPath, workflowPath string) (*Config, error) {
@@ -126,9 +137,10 @@ func Load(instancesPath, workflowPath string) (*Config, error) {
 	}
 
 	var workflowCfg struct {
-		Name         string         `yaml:"name"`
-		SlackWebhook string         `yaml:"slack_webhook,omitempty"`
-		Workflow     []WorkflowItem `yaml:"workflow"`
+		Name         string            `yaml:"name"`
+		SlackWebhook string            `yaml:"slack_webhook,omitempty"`
+		Inputs       map[string]string `yaml:"inputs,omitempty"`
+		Workflow     []WorkflowItem    `yaml:"workflow"`
 	}
 	if err := yaml.Unmarshal(workflowData, &workflowCfg); err != nil {
 		return nil, fmt.Errorf("failed to parse workflow config: %w", err)
@@ -138,6 +150,7 @@ func Load(instancesPath, workflowPath string) (*Config, error) {
 	cfg := &Config{
 		Name:         workflowCfg.Name,
 		SlackWebhook: workflowCfg.SlackWebhook,
+		Inputs:       workflowCfg.Inputs,
 		Instances:    instancesCfg.Instances,
 		GitHub:       instancesCfg.GitHub,
 		Workflow:     workflowCfg.Workflow,

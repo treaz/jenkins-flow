@@ -149,6 +149,10 @@ components:
       properties:
         workflow:
           type: string
+        inputs:
+          type: object
+          additionalProperties:
+            type: string
         skipPRCheck:
           type: boolean
     
@@ -165,6 +169,10 @@ components:
           type: string
         status:
           type: string
+        inputs:
+          type: object
+          additionalProperties:
+            type: string
         items:
           type: array
           items:

@@ -208,9 +208,15 @@ func runStep(ctx context.Context, cfg *config.Config, step config.Step, l *logge
 
 	client := jenkins.NewClient(instanceCfg.URL, token, l)
 
+	// Prepare params with substitution
+	jobParams := make(map[string]string)
+	for k, v := range step.Params {
+		jobParams[k] = config.Substitute(v, cfg.Inputs)
+	}
+
 	// 1. Trigger
 	l.Infof("  -> [%s] Triggering job %s", step.Name, step.Job)
-	queueItemURL, err := client.TriggerJob(ctx, step.Job, step.Params)
+	queueItemURL, err := client.TriggerJob(ctx, step.Job, jobParams)
 	if err != nil {
 		return "", fmt.Errorf("failed to trigger: %w", err)
 	}
