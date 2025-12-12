@@ -150,14 +150,33 @@ func (s *Server) ListWorkflows(w http.ResponseWriter, r *http.Request) {
 				// Parse the name from the file content
 				workflowName, err := config.ParseWorkflowMeta(fullPath)
 				if err != nil {
-					log.Printf("Warning: Skipping invalid workflow file %q: %v", name, err)
+					// Include invalid workflows in list with error
+					workflows = append(workflows, api.WorkflowInfo{
+						Name:  strPtr(name),
+						Path:  strPtr(fullPath),
+						Valid: boolPtr(false),
+						Error: strPtr(err.Error()),
+					})
 					continue
 				}
 
-				workflows = append(workflows, api.WorkflowInfo{
-					Name: strPtr(workflowName),
-					Path: strPtr(fullPath),
-				})
+				// Validate the complete workflow
+				_, validationErr := config.Load(s.instancesPath, fullPath)
+				if validationErr != nil {
+					workflows = append(workflows, api.WorkflowInfo{
+						Name:  strPtr(workflowName),
+						Path:  strPtr(fullPath),
+						Valid: boolPtr(false),
+						Error: strPtr(validationErr.Error()),
+					})
+				} else {
+					workflows = append(workflows, api.WorkflowInfo{
+						Name:  strPtr(workflowName),
+						Path:  strPtr(fullPath),
+						Valid: boolPtr(true),
+						Error: nil,
+					})
+				}
 			}
 		}
 	}

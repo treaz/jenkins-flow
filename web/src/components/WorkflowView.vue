@@ -18,6 +18,7 @@
         <button 
           v-if="!isRunning" 
           class="btn btn-primary"
+          :disabled="hasError"
           @click="$emit('run')"
         >
            Run Workflow
@@ -104,6 +105,10 @@ const formatTime = (isoString) => {
   const date = new Date(isoString)
   return date.toLocaleTimeString()
 }
+
+const hasError = computed(() => {
+  return !!props.workflow?.error
+})
 
 const totalDuration = computed(() => {
   if (!props.workflow?.startedAt) return null
@@ -235,5 +240,15 @@ const totalDuration = computed(() => {
 
 .btn-danger:hover {
   opacity: 0.9;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary:disabled {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
 }
 </style>

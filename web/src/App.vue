@@ -116,13 +116,39 @@ const loadWorkflowDefinition = async (path) => {
 
   pendingDefinitions.add(path)
   try {
-    const definition = await fetchWorkflowDefinition(path)
-    workflowDefinitions.value = {
-      ...workflowDefinitions.value,
-      [path]: definition
+    // Check if workflow is invalid from the list
+    const workflow = workflows.value.find(w => w.path === path)
+    if (workflow && workflow.valid === false) {
+      // Create a mock definition showing the validation error
+      workflowDefinitions.value = {
+        ...workflowDefinitions.value,
+        [path]: {
+          name: workflow.name,
+          status: 'failed',
+          error: workflow.error,
+          items: []
+        }
+      }
+    } else {
+      const definition = await fetchWorkflowDefinition(path)
+      workflowDefinitions.value = {
+        ...workflowDefinitions.value,
+        [path]: definition
+      }
     }
   } catch (err) {
     console.error('Failed to load workflow definition:', err)
+    // Show error in the UI
+    const workflow = workflows.value.find(w => w.path === path)
+    workflowDefinitions.value = {
+      ...workflowDefinitions.value,
+      [path]: {
+        name: workflow?.name || 'Unknown Workflow',
+        status: 'failed',
+        error: err.message,
+        items: []
+      }
+    }
   } finally {
     pendingDefinitions.delete(path)
   }
