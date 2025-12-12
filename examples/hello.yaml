@@ -3,9 +3,8 @@ inputs:
   name: "User"
 
 workflow:
-  - step:
-      name: "Say Hello"
-      instance: "dev" # Assuming a 'dev' instance exists or using a dummy one for structure
-      job: "utils/echo"
-      parameters:
-        MSG: "Hello, ${name}!"
+  - name: "Say Hello"
+    instance: "dev" # Assuming a 'dev' instance exists or using a dummy one for structure
+    job: "utils/echo"
+    params:
+      MSG: "Hello, ${name}!"
