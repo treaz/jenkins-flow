@@ -13,6 +13,23 @@
           </span>
         </div>
       </div>
+      
+      <div class="workflow-controls">
+        <button 
+          v-if="!isRunning" 
+          class="btn btn-primary"
+          @click="$emit('run')"
+        >
+           Run Workflow
+        </button>
+        <button 
+          v-else 
+          class="btn btn-danger"
+          @click="$emit('stop')"
+        >
+           Stop
+        </button>
+      </div>
     </div>
     
     <div v-if="workflow.error" class="workflow-error">
@@ -76,8 +93,11 @@ import StatusBadge from './StatusBadge.vue'
 import PRWaitCard from './PRWaitCard.vue'
 
 const props = defineProps({
-  workflow: Object
+  workflow: Object,
+  isRunning: Boolean
 })
+
+defineEmits(['run', 'stop'])
 
 const formatTime = (isoString) => {
   if (!isoString) return ''
@@ -108,6 +128,9 @@ const totalDuration = computed(() => {
 
 .workflow-header {
   margin-bottom: 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
 }
 
 .workflow-name {
@@ -184,5 +207,33 @@ const totalDuration = computed(() => {
 .empty-state p {
   color: var(--text-secondary);
   font-size: 14px;
+}
+
+.btn {
+  padding: 8px 16px;
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: white;
+}
+
+.btn-primary:hover {
+  background: var(--accent-hover);
+}
+
+.btn-danger {
+  background: #ef4444;
+  color: white;
+}
+
+.btn-danger:hover {
+  opacity: 0.9;
 }
 </style>

@@ -109,7 +109,7 @@ Open your browser to `http://localhost:32567`.
 
 From the dashboard you can:
 
-- See all available workflows in the `workflows/` directory.
+- See all available workflows in the `workflows/` and `examples/` directories.
 - Trigger workflows.
 - View real-time logs and step status.
 

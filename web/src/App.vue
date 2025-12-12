@@ -1,24 +1,24 @@
 <template>
   <div class="app-container">
-    <AppHeader :is-running="isRunning" />
+    <AppHeader 
+      :is-running="isRunning" 
+      @open-settings="isSettingsModalOpen = true"
+    />
     
     <main class="main-content">
       <AppSidebar 
         :workflows="workflows"
         :selected-workflow="selectedWorkflow"
-        :selected-definition="displayWorkflow"
-        :is-running="isRunning"
-        :log-level="logLevel"
         @select="selectWorkflow"
-        @run="triggerRun"
-        @stop="triggerStop"
-        @change-log-level="changeLogLevel"
       />
       
       <div class="content-area">
         <WorkflowView 
           v-if="displayWorkflow" 
           :workflow="displayWorkflow" 
+          :is-running="isRunning"
+          @run="openRunModal"
+          @stop="triggerStop"
         />
         <div v-else-if="selectedWorkflow" class="workflow-preview">
           <h3>Loading Workflow</h3>
@@ -29,8 +29,24 @@
         </div>
       </div>
     </main>
+    
+    <RunWorkflowModal
+      :is-open="isRunModalOpen"
+      :inputs="workflowInputs"
+      :is-loading="isStartingRun"
+      @close="isRunModalOpen = false"
+      @run="handleRunSubmit"
+    />
+    
+    <SettingsModal
+      :is-open="isSettingsModalOpen"
+      :log-level="logLevel"
+      @close="isSettingsModalOpen = false"
+      @change-log-level="changeLogLevel"
+    />
+    
+    <ToastNotification ref="toast" />
   </div>
-  <ToastNotification ref="toast" />
 </template>
 
 <script setup>
@@ -39,6 +55,8 @@ import WorkflowView from './components/WorkflowView.vue'
 import ToastNotification from './components/ToastNotification.vue'
 import AppHeader from './components/AppHeader.vue'
 import AppSidebar from './components/AppSidebar.vue'
+import RunWorkflowModal from './components/RunWorkflowModal.vue'
+import SettingsModal from './components/SettingsModal.vue'
 import { fetchWorkflows, fetchStatus, runWorkflow, stopWorkflow, fetchLogLevel, setLogLevel, fetchWorkflowDefinition } from './api/client'
 
 const workflows = ref([])
@@ -51,6 +69,11 @@ const pollTimer = ref(null)
 const toast = ref(null)
 const pendingDefinitions = new Set()
 
+// Modal states
+const isRunModalOpen = ref(false)
+const isSettingsModalOpen = ref(false)
+const isStartingRun = ref(false)
+
 const displayWorkflow = computed(() => {
   const selected = selectedWorkflow.value
   if (!selected) return null
@@ -61,6 +84,11 @@ const displayWorkflow = computed(() => {
   }
 
   return workflowDefinitions.value[selected] || null
+})
+
+const workflowInputs = computed(() => {
+  if (!displayWorkflow.value) return {}
+  return displayWorkflow.value.inputs || {}
 })
 
 const getWorkflowName = (path) => {
@@ -105,12 +133,6 @@ const updateStatus = async () => {
     const status = await fetchStatus()
     currentStatus.value = status
     isRunning.value = status.running
-    
-    // Auto-select running workflow if not manually selected
-    if (status.running && status.workflow) {
-      // If we're viewing a different workflow, maybe don't force switch?
-      // user probably wants to see the running one though
-    }
   } catch (err) {
     console.error('Failed to update status:', err)
   }
@@ -121,17 +143,20 @@ const selectWorkflow = (path) => {
   loadWorkflowDefinition(path)
 }
 
-const triggerRun = async (options = {}) => {
-  if (!selectedWorkflow.value || isRunning.value) return
-  
+const openRunModal = () => {
+  isRunModalOpen.value = true
+}
+
+const handleRunSubmit = async (options) => {
+  isStartingRun.value = true
   try {
     await runWorkflow(selectedWorkflow.value, options)
+    isRunModalOpen.value = false
     toast.value.add({
       title: 'Workflow Started',
       message: `Successfully started ${getWorkflowName(selectedWorkflow.value)}`,
       type: 'success'
     })
-    // Immediate update
     await updateStatus()
   } catch (err) {
     toast.value.add({
@@ -140,6 +165,8 @@ const triggerRun = async (options = {}) => {
       type: 'error',
       duration: 8000
     })
+  } finally {
+    isStartingRun.value = false
   }
 }
 
@@ -151,7 +178,6 @@ const triggerStop = async () => {
       message: 'Stop signal sent to workflow',
       type: 'success'
     })
-    // Immediate update
     await updateStatus()
   } catch (err) {
      toast.value.add({
@@ -177,7 +203,6 @@ const changeLogLevel = async (newLevel) => {
       message: err.message,
       type: 'error'
     })
-    // Revert on failure
     const current = await fetchLogLevel()
     logLevel.value = current.level
   }
@@ -194,12 +219,10 @@ onMounted(() => {
   loadWorkflows()
   updateStatus()
   
-  // Load initial log level
   fetchLogLevel().then(data => {
     logLevel.value = data.level
   }).catch(err => console.error('Failed to load log level:', err))
 
-  // Poll every 5 seconds
   pollTimer.value = setInterval(updateStatus, 5000)
 })
 

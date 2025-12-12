@@ -30,7 +30,7 @@ import (
 type Server struct {
 	port          int
 	instancesPath string
-	workflowsDir  string
+	workflowDirs  []string
 	state         *StateManager
 	logger        *logger.Logger
 	staticFS      fs.FS
@@ -44,7 +44,7 @@ type Server struct {
 var StaticFiles embed.FS
 
 // NewServer creates a new dashboard server.
-func NewServer(port int, instancesPath, workflowsDir string, l *logger.Logger) *Server {
+func NewServer(port int, instancesPath string, workflowDirs []string, l *logger.Logger) *Server {
 	// Get the static subdirectory from embedded files
 	staticFS, err := fs.Sub(StaticFiles, "static")
 	if err != nil {
@@ -54,7 +54,7 @@ func NewServer(port int, instancesPath, workflowsDir string, l *logger.Logger) *
 	return &Server{
 		port:          port,
 		instancesPath: instancesPath,
-		workflowsDir:  workflowsDir,
+		workflowDirs:  workflowDirs,
 		state:         NewStateManager(),
 		logger:        l,
 		staticFS:      staticFS,
@@ -133,30 +133,32 @@ func (s *Server) Start() error {
 func (s *Server) ListWorkflows(w http.ResponseWriter, r *http.Request) {
 	workflows := []api.WorkflowInfo{}
 
-	// Look for workflow files in the workflows directory
-	entries, err := os.ReadDir(s.workflowsDir)
-	if err != nil {
-		log.Printf("Error reading workflows directory: %v", err)
-		http.Error(w, "Failed to read workflows directory", http.StatusInternalServerError)
-		return
-	}
+	for _, dir := range s.workflowDirs {
+		// Look for workflow files in the directory
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			// Just log warning if one dir fails, don't fail entire request
+			log.Printf("Warning: Error reading workflows directory %q: %v", dir, err)
+			continue
+		}
 
-	for _, entry := range entries {
-		name := entry.Name()
-		if !entry.IsDir() && (strings.HasSuffix(name, ".yaml") || strings.HasSuffix(name, ".yml")) {
-			fullPath := filepath.Join(s.workflowsDir, name)
+		for _, entry := range entries {
+			name := entry.Name()
+			if !entry.IsDir() && (strings.HasSuffix(name, ".yaml") || strings.HasSuffix(name, ".yml")) {
+				fullPath := filepath.Join(dir, name)
 
-			// Parse the name from the file content
-			workflowName, err := config.ParseWorkflowMeta(fullPath)
-			if err != nil {
-				log.Printf("Warning: Skipping invalid workflow file %q: %v", name, err)
-				continue
+				// Parse the name from the file content
+				workflowName, err := config.ParseWorkflowMeta(fullPath)
+				if err != nil {
+					log.Printf("Warning: Skipping invalid workflow file %q: %v", name, err)
+					continue
+				}
+
+				workflows = append(workflows, api.WorkflowInfo{
+					Name: strPtr(workflowName),
+					Path: strPtr(fullPath),
+				})
 			}
-
-			workflows = append(workflows, api.WorkflowInfo{
-				Name: strPtr(workflowName),
-				Path: strPtr(fullPath),
-			})
 		}
 	}
 
@@ -173,9 +175,18 @@ func (s *Server) GetWorkflowDefinition(w http.ResponseWriter, r *http.Request, n
 	}
 
 	workflowPath = filepath.Clean(workflowPath)
-	workflowsRoot := filepath.Clean(s.workflowsDir)
-	if !strings.HasPrefix(workflowPath, workflowsRoot+string(os.PathSeparator)) && workflowPath != workflowsRoot {
-		http.Error(w, "Workflow path outside allowed directory", http.StatusForbidden)
+
+	allowed := false
+	for _, dir := range s.workflowDirs {
+		workflowsRoot := filepath.Clean(dir)
+		if strings.HasPrefix(workflowPath, workflowsRoot+string(os.PathSeparator)) || workflowPath == workflowsRoot {
+			allowed = true
+			break
+		}
+	}
+
+	if !allowed {
+		http.Error(w, "Workflow path outside allowed directories", http.StatusForbidden)
 		return
 	}
 

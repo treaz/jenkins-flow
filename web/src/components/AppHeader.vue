@@ -3,11 +3,17 @@
     <div class="logo">
       <span class="icon">⚙️</span>
       <h1>Jenkins Flow</h1>
+      
+      <div class="status-indicator" :class="{ running: isRunning }">
+        <span class="dot"></span>
+        {{ isRunning ? 'Running' : 'Ready' }}
+      </div>
     </div>
     
-    <div class="status-indicator" :class="{ running: isRunning }">
-      <span class="dot"></span>
-      {{ isRunning ? 'Running' : 'Ready' }}
+    <div class="actions">
+      <button class="settings-btn" @click="$emit('open-settings')" title="Settings">
+        <span class="icon">⚙️</span>
+      </button>
     </div>
   </header>
 </template>
@@ -19,6 +25,8 @@ defineProps({
     default: false
   }
 })
+
+defineEmits(['open-settings'])
 </script>
 
 <style scoped>
@@ -35,7 +43,7 @@ defineProps({
 .logo {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
 }
 
 .logo h1 {
@@ -55,7 +63,7 @@ defineProps({
   font-size: 13px;
   font-weight: 500;
   color: var(--text-muted);
-  padding: 6px 12px;
+  padding: 4px 10px;
   background: var(--bg-primary);
   border-radius: 20px;
   border: 1px solid var(--border-color);
@@ -72,5 +80,27 @@ defineProps({
   height: 8px;
   border-radius: 50%;
   background-color: currentColor;
+}
+
+.settings-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  padding: 8px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.settings-btn:hover {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.settings-btn .icon {
+  font-size: 20px;
 }
 </style>
