@@ -118,7 +118,7 @@ const loadWorkflowDefinition = async (path) => {
   try {
     // Check if workflow is invalid from the list
     const workflow = workflows.value.find(w => w.path === path)
-    if (workflow && workflow.valid === false) {
+    if (workflow && !workflow.valid) {
       // Create a mock definition showing the validation error
       workflowDefinitions.value = {
         ...workflowDefinitions.value,
