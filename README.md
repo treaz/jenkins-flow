@@ -169,6 +169,37 @@ export JENKINS_AUTH_US="username:11xxxxxxxxxxxxxxxxxxxx"
 
 The `wait_for_pr` step can resolve a PR dynamically using `head_branch`. The branch comparison is case-insensitive. If multiple open PRs exist for the same branch, the step fails fast so the workflow does not continue with ambiguous state.
 
+### Configurable Workflow Inputs
+
+You can define variables in your workflow YAML file that can be modified via the UI before each run. These inputs are substituted into your job parameters.
+
+**1. Define Inputs in `workflow.yaml`:**
+
+Add an `inputs` section at the top level of your workflow file.
+
+```yaml
+name: "Deploy Service"
+inputs:
+  git_branch: main
+  region: us-west-1
+  env: staging
+
+workflow:
+  - name: Deploy
+    instance: ci
+    job: /job/deploy
+    params:
+      BRANCH: ${git_branch}  # Variable substitution
+      REGION: ${region}
+      ENV: ${env}
+```
+
+**2. Edit in Dashboard:**
+When you select the workflow in the UI, input fields will automatically appear for each defined variable. You can change `git_branch` from `main` to `feature/xyz` and click **Run**.
+
+**3. Persistence:**
+Any changes you make in the UI are **saved back to the `workflow.yaml` file**. This ensures that the next time you (or someone else) runs the workflow, it defaults to the last used configuration. The system preserves comments and formatting when updating the file.
+
 ## Notifications
 
 The CLI uses [`terminal-notifier`](https://github.com/julienXX/terminal-notifier) to display macOS desktop notifications when workflows complete (both success and failure).
