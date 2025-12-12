@@ -1,0 +1,8 @@
+name: Malformed YAML
+workflow:
+  - name: Step 1
+    instance: dev
+    job: /job/test
+  - name: Step 2
+      instance: dev  # Invalid indent
+    job: /job/test2
