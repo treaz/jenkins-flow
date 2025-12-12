@@ -52,13 +52,9 @@ const dotClass = (path) => {
         :class="{ active: selectedWorkflow === wf.path, invalid: !wf.valid }"
         @click="$emit('select', wf.path)"
       >
-<<<<<<< HEAD
         <span class="status-dot" :class="dotClass(wf.path)"></span>
-        {{ wf.name }}
-=======
         <span class="workflow-icon" v-if="!wf.valid">⚠️</span>
         <span class="workflow-name">{{ wf.name }}</span>
->>>>>>> d1379b7137c83c06704253bbb7b6787f26b28346
       </button>
     </div>
   </aside>
@@ -117,31 +113,34 @@ const dotClass = (path) => {
   color: white;
 }
 
-<<<<<<< HEAD
 /* Status dot */
 .status-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
   display: inline-block;
-  margin-right: 8px;
-  vertical-align: middle;
+  flex-shrink: 0;
   background: var(--text-muted);
   opacity: 0.9;
 }
+
 .status-dot.idle {
   background: var(--text-muted);
   opacity: 0.6;
 }
+
 .status-dot.pending {
   background: var(--status-pending);
 }
+
 .status-dot.running {
   background: var(--status-running);
 }
+
 .status-dot.failed {
   background: var(--status-failed);
-=======
+}
+
 .workflow-btn.invalid {
   color: #f59e0b;
 }
@@ -160,6 +159,5 @@ const dotClass = (path) => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
->>>>>>> d1379b7137c83c06704253bbb7b6787f26b28346
 }
 </style>
