@@ -9,6 +9,7 @@
       <AppSidebar 
         :workflows="workflows"
         :selected-workflow="selectedWorkflow"
+        :current-status="currentStatus"
         @select="selectWorkflow"
       />
       
