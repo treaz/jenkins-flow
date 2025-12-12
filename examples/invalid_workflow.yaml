@@ -1,0 +1,10 @@
+name: Invalid Workflow Example
+inputs:
+  version: "1.0"
+
+workflow:
+  - name: "Deploy Step"
+    instance: "nonexistent-instance"
+    job: "/job/deploy"
+    params:
+      VERSION: ${version}

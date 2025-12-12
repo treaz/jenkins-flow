@@ -135,6 +135,10 @@ components:
           type: string
         path:
           type: string
+        valid:
+          type: boolean
+        error:
+          type: string
     
     StatusResponse:
       type: object
