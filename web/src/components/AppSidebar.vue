@@ -6,10 +6,11 @@
         v-for="wf in workflows"
         :key="wf.path"
         class="workflow-btn"
-        :class="{ active: selectedWorkflow === wf.path }"
+        :class="{ active: selectedWorkflow === wf.path, invalid: !wf.valid }"
         @click="$emit('select', wf.path)"
       >
-        {{ wf.name }}
+        <span class="workflow-icon" v-if="!wf.valid">⚠️</span>
+        <span class="workflow-name">{{ wf.name }}</span>
       </button>
     </div>
   </aside>
@@ -68,6 +69,9 @@ defineEmits(['select'])
   font-size: 14px;
   font-weight: 500;
   transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .workflow-btn:hover {
@@ -78,5 +82,25 @@ defineEmits(['select'])
 .workflow-btn.active {
   background: var(--accent);
   color: white;
+}
+
+.workflow-btn.invalid {
+  color: #f59e0b;
+}
+
+.workflow-btn.invalid:hover {
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.workflow-icon {
+  flex-shrink: 0;
+  font-size: 16px;
+}
+
+.workflow-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

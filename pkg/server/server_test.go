@@ -13,33 +13,51 @@ import (
 )
 
 func TestHandleListWorkflows(t *testing.T) {
-	// Create temporary workflows directory
+	// Create temporary directories
 	tmpDir, err := os.MkdirTemp("", "workflows_test_")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(tmpDir)
 
+	workflowsDir := filepath.Join(tmpDir, "workflows")
+	if err := os.Mkdir(workflowsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create temporary instances file in parent dir (not in workflows dir)
+	instancesPath := filepath.Join(tmpDir, "instances.yaml")
+	instancesContent := "instances:\n  dev:\n    url: http://localhost:8080\n    token: test:token\n"
+	if err := os.WriteFile(instancesPath, []byte(instancesContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
 	// Create valid workflow file
-	validContent := "name: \"Valid Workflow\"\nworkflow:\n  - name: step1\n"
-	if err := os.WriteFile(filepath.Join(tmpDir, "valid.yaml"), []byte(validContent), 0644); err != nil {
+	validContent := "name: \"Valid Workflow\"\nworkflow:\n  - name: step1\n    instance: dev\n    job: /job/test\n"
+	if err := os.WriteFile(filepath.Join(workflowsDir, "valid.yaml"), []byte(validContent), 0644); err != nil {
 		t.Fatal(err)
 	}
 
 	// Create invalid workflow file (missing name)
 	invalidContent := "workflow:\n  - name: step1\n"
-	if err := os.WriteFile(filepath.Join(tmpDir, "invalid.yaml"), []byte(invalidContent), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(workflowsDir, "invalid.yaml"), []byte(invalidContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create workflow with unknown instance
+	unknownInstanceContent := "name: \"Unknown Instance\"\nworkflow:\n  - name: step1\n    instance: unknown\n    job: /job/test\n"
+	if err := os.WriteFile(filepath.Join(workflowsDir, "unknown_instance.yaml"), []byte(unknownInstanceContent), 0644); err != nil {
 		t.Fatal(err)
 	}
 
 	// Create non-yaml file
-	if err := os.WriteFile(filepath.Join(tmpDir, "readme.txt"), []byte("text"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(workflowsDir, "readme.txt"), []byte("text"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
 	// Initialize server
 	l := logger.New(logger.Error)
-	srv := NewServer(8080, "instances.yaml", []string{tmpDir}, l)
+	srv := NewServer(8080, instancesPath, []string{workflowsDir}, l)
 
 	// Create request
 	req := httptest.NewRequest(http.MethodGet, "/api/workflows", nil)
@@ -59,17 +77,77 @@ func TestHandleListWorkflows(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Should contain exactly 1 valid workflow
-	if len(workflows) != 1 {
-		t.Fatalf("expected 1 workflow, got %d", len(workflows))
+	// Should contain 3 workflows (1 valid, 2 invalid)
+	if len(workflows) != 3 {
+		t.Logf("Workflows returned:")
+		for i, wf := range workflows {
+			name := "nil"
+			if wf.Name != nil {
+				name = *wf.Name
+			}
+			path := "nil"
+			if wf.Path != nil {
+				path = *wf.Path
+			}
+			valid := "nil"
+			if wf.Valid != nil {
+				if *wf.Valid {
+					valid = "true"
+				} else {
+					valid = "false"
+				}
+			}
+			t.Logf("  [%d] Name=%s, Path=%s, Valid=%s", i, name, path, valid)
+		}
+		t.Fatalf("expected 3 workflows, got %d", len(workflows))
 	}
 
-	if workflows[0].Name == nil || *workflows[0].Name != "Valid Workflow" {
-		t.Errorf("expected workflow name 'Valid Workflow', got %v", workflows[0].Name)
+	// Find each workflow and verify
+	var validWF, invalidWF, unknownWF *api.WorkflowInfo
+	for i := range workflows {
+		wf := &workflows[i]
+		if wf.Name != nil {
+			switch *wf.Name {
+			case "Valid Workflow":
+				validWF = wf
+			case "invalid.yaml":
+				invalidWF = wf
+			case "Unknown Instance":
+				unknownWF = wf
+			}
+		}
 	}
 
-	expectedPath := filepath.Join(tmpDir, "valid.yaml")
-	if workflows[0].Path == nil || *workflows[0].Path != expectedPath {
-		t.Errorf("expected path %q, got %v", expectedPath, workflows[0].Path)
+	// Check valid workflow
+	if validWF == nil {
+		t.Fatal("valid workflow not found")
+	}
+	if validWF.Valid == nil || !*validWF.Valid {
+		t.Errorf("expected valid workflow to be valid=true, got %v", validWF.Valid)
+	}
+	if validWF.Error != nil && *validWF.Error != "" {
+		t.Errorf("expected no error for valid workflow, got %q", *validWF.Error)
+	}
+
+	// Check invalid workflow (missing name)
+	if invalidWF == nil {
+		t.Fatal("invalid workflow not found")
+	}
+	if invalidWF.Valid == nil || *invalidWF.Valid {
+		t.Errorf("expected invalid workflow to be valid=false, got %v", invalidWF.Valid)
+	}
+	if invalidWF.Error == nil || *invalidWF.Error == "" {
+		t.Error("expected error for invalid workflow")
+	}
+
+	// Check workflow with unknown instance
+	if unknownWF == nil {
+		t.Fatal("unknown instance workflow not found")
+	}
+	if unknownWF.Valid == nil || *unknownWF.Valid {
+		t.Errorf("expected unknown instance workflow to be valid=false, got %v", unknownWF.Valid)
+	}
+	if unknownWF.Error == nil || *unknownWF.Error == "" {
+		t.Error("expected error for unknown instance workflow")
 	}
 }
