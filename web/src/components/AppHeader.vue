@@ -3,11 +3,6 @@
     <div class="logo">
       <span class="icon">⚙️</span>
       <h1>Jenkins Flow</h1>
-      
-      <div class="status-indicator" :class="{ running: isRunning }">
-        <span class="dot"></span>
-        {{ isRunning ? 'Running' : 'Ready' }}
-      </div>
     </div>
     
     <div class="actions">
