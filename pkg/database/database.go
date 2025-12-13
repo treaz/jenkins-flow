@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -34,7 +35,7 @@ type DB struct {
 // NewDB initializes a new database connection and creates tables if needed.
 func NewDB(dbPath string) (*DB, error) {
 	// Expand home directory if needed
-	if dbPath[:2] == "~/" {
+	if len(dbPath) >= 2 && dbPath[:2] == "~/" {
 		homeDir, err := os.UserHomeDir()
 		if err != nil {
 			return nil, fmt.Errorf("failed to get home directory: %w", err)
@@ -201,6 +202,7 @@ func (db *DB) GetRuns(limit, offset int, workflowPath, status string) ([]Workflo
 		if run.InputsJSON != "" {
 			if err := json.Unmarshal([]byte(run.InputsJSON), &run.Inputs); err != nil {
 				// Log error but don't fail the entire query
+				log.Printf("Warning: Failed to unmarshal inputs for run %d: %v", run.ID, err)
 				run.Inputs = make(map[string]string)
 			}
 		}
@@ -245,7 +247,8 @@ func (db *DB) GetRun(runID int64) (*WorkflowRun, error) {
 	// Unmarshal inputs for convenience
 	if run.InputsJSON != "" {
 		if err := json.Unmarshal([]byte(run.InputsJSON), &run.Inputs); err != nil {
-			// Set empty map if unmarshal fails
+			// Log error but don't fail the query
+			log.Printf("Warning: Failed to unmarshal inputs for run %d: %v", run.ID, err)
 			run.Inputs = make(map[string]string)
 		}
 	}
