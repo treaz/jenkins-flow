@@ -10,6 +10,7 @@ A robust Go CLI tools to orchestrate Jenkins jobs linearly across multiple insta
 - **Fail Fast**: Stops immediately if a job fails (including cancellation of parallel siblings).
 - **Notifications**: macOS desktop notifications via `terminal-notifier`, with optional Slack integration.
 - **Secure Auth**: Separation of concerns with `instances.yaml` (ignored) and `workflow.yaml`.
+- **Workflow History**: SQLite database persists all workflow runs with inputs, status, and configuration snapshots.
 
 ## Installation
 
@@ -228,6 +229,67 @@ To create a Slack webhook:
 4. Add a new webhook to a channel
 5. Copy the webhook URL
 
+
+## Workflow History
+
+Jenkins Flow automatically persists all workflow runs to a SQLite database for historical tracking and auditing.
+
+### Database Location
+
+**Default**: `~/.config/jenkins-flow/jenkins-flow.db`
+
+**Custom path via CLI**:
+```bash
+./jenkins-flow -db-path /custom/path/jenkins-flow.db
+```
+
+**Custom path via UI**: Use the Settings API endpoint or update `~/.config/jenkins-flow/settings.json`:
+```json
+{
+  "db_path": "/custom/path/jenkins-flow.db"
+}
+```
+
+### What's Stored
+
+Each workflow run captures:
+- Workflow name and file path
+- Start and end timestamps
+- Final status (running, success, failed, stopped)
+- Input parameters (as JSON)
+- Complete workflow YAML configuration snapshot
+- Whether PR checks were skipped
+
+### API Endpoints
+
+**List workflow runs** (with pagination and filtering):
+```
+GET /api/history?limit=50&offset=0&workflow_path=workflows/deploy.yaml&status=success
+```
+
+**Get specific run**:
+```
+GET /api/history/{id}
+```
+
+**Get current database path**:
+```
+GET /api/settings/db-path
+```
+
+**Update database path** (requires restart):
+```
+PUT /api/settings/db-path
+Content-Type: application/json
+
+{
+  "path": "/new/path/jenkins-flow.db"
+}
+```
+
+### Error Handling
+
+Database operations are designed to be non-blocking. If database writes fail, errors are logged but workflow execution continues normally.
 
 ## Development
 
