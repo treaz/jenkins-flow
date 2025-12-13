@@ -13,7 +13,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -549,7 +548,7 @@ func (s *Server) runWorkflow(ctx context.Context, cfg *config.Config, workflowPa
 	if content, err := os.ReadFile(workflowPath); err == nil {
 		configSnapshot = string(content)
 	} else {
-		s.logger.Warnf("Failed to read workflow file for snapshot: %v", err)
+		s.logger.Infof("WARNING: Failed to read workflow file for snapshot: %v", err)
 	}
 
 	// Create database record if database is available
