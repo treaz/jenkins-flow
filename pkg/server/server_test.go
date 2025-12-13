@@ -57,7 +57,7 @@ func TestHandleListWorkflows(t *testing.T) {
 
 	// Initialize server
 	l := logger.New(logger.Error)
-	srv := NewServer(8080, instancesPath, []string{workflowsDir}, l)
+	srv := NewServer(8080, instancesPath, []string{workflowsDir}, "", l)
 
 	// Create request
 	req := httptest.NewRequest(http.MethodGet, "/api/workflows", nil)
