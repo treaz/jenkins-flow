@@ -125,6 +125,99 @@ paths:
                     type: string
         '400':
           description: Invalid log level
+  /api/history:
+    get:
+      summary: List workflow run history
+      operationId: getHistory
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+          description: Maximum number of results to return
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+          description: Offset for pagination
+        - name: workflow_path
+          in: query
+          schema:
+            type: string
+          description: Filter by workflow path
+        - name: status
+          in: query
+          schema:
+            type: string
+          description: Filter by status (running, success, failed, stopped)
+      responses:
+        '200':
+          description: List of workflow runs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkflowRun'
+        '500':
+          description: Server error
+  /api/history/{id}:
+    get:
+      summary: Get specific workflow run details
+      operationId: getHistoryRun
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Workflow run ID
+      responses:
+        '200':
+          description: Workflow run details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowRun'
+        '404':
+          description: Workflow run not found
+        '500':
+          description: Server error
+  /api/settings/db-path:
+    get:
+      summary: Get current database path
+      operationId: getDBPath
+      responses:
+        '200':
+          description: Current database path
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DBPathResponse'
+        '500':
+          description: Server error
+    put:
+      summary: Update database path
+      operationId: setDBPath
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DBPathRequest'
+      responses:
+        '200':
+          description: Database path updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DBPathResponse'
+        '400':
+          description: Invalid request
+        '500':
+          description: Server error
 
 components:
   schemas:
@@ -246,4 +339,43 @@ components:
         htmlUrl:
           type: string
         title:
+          type: string
+    
+    WorkflowRun:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        workflow_name:
+          type: string
+        workflow_path:
+          type: string
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        status:
+          type: string
+        inputs:
+          type: object
+          additionalProperties:
+            type: string
+        config_snapshot:
+          type: string
+        skip_pr_check:
+          type: boolean
+    
+    DBPathRequest:
+      type: object
+      properties:
+        path:
+          type: string
+    
+    DBPathResponse:
+      type: object
+      properties:
+        path:
           type: string

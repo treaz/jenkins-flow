@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -21,8 +22,10 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/treaz/jenkins-flow/pkg/api"
 	"github.com/treaz/jenkins-flow/pkg/config"
+	"github.com/treaz/jenkins-flow/pkg/database"
 	"github.com/treaz/jenkins-flow/pkg/logger"
 	"github.com/treaz/jenkins-flow/pkg/notifier"
+	"github.com/treaz/jenkins-flow/pkg/settings"
 	"github.com/treaz/jenkins-flow/pkg/workflow"
 )
 
@@ -36,6 +39,9 @@ type Server struct {
 	staticFS      fs.FS
 	mu            sync.Mutex
 	cancelFn      context.CancelFunc
+	db            *database.DB
+	dbPath        string
+	currentRunID  int64
 }
 
 // StaticFiles will be embedded at build time.
@@ -44,11 +50,27 @@ type Server struct {
 var StaticFiles embed.FS
 
 // NewServer creates a new dashboard server.
-func NewServer(port int, instancesPath string, workflowDirs []string, l *logger.Logger) *Server {
+func NewServer(port int, instancesPath string, workflowDirs []string, dbPath string, l *logger.Logger) *Server {
 	// Get the static subdirectory from embedded files
 	staticFS, err := fs.Sub(StaticFiles, "static")
 	if err != nil {
 		log.Printf("Warning: Could not load embedded static files: %v", err)
+	}
+
+	// Determine database path
+	if dbPath == "" {
+		dbPath, err = settings.GetDefaultDBPath()
+		if err != nil {
+			l.Errorf("Failed to get default database path: %v", err)
+			dbPath = "jenkins-flow.db" // Fallback
+		}
+	}
+
+	// Initialize database
+	db, err := database.NewDB(dbPath)
+	if err != nil {
+		l.Errorf("Failed to initialize database: %v", err)
+		// Don't fail server startup, just log the error
 	}
 
 	return &Server{
@@ -58,6 +80,8 @@ func NewServer(port int, instancesPath string, workflowDirs []string, l *logger.
 		state:         NewStateManager(),
 		logger:        l,
 		staticFS:      staticFS,
+		db:            db,
+		dbPath:        dbPath,
 	}
 }
 
@@ -520,12 +544,53 @@ func (s *Server) runWorkflow(ctx context.Context, cfg *config.Config, workflowPa
 		displayName = "Workflow"
 	}
 
+	// Read workflow YAML content for snapshot
+	configSnapshot := ""
+	if content, err := os.ReadFile(workflowPath); err == nil {
+		configSnapshot = string(content)
+	} else {
+		s.logger.Warnf("Failed to read workflow file for snapshot: %v", err)
+	}
+
+	// Create database record if database is available
+	var runID int64
+	if s.db != nil {
+		var err error
+		runID, err = s.db.CreateRun(cfg.Name, workflowPath, configSnapshot, cfg.Inputs, skipPRCheck)
+		if err != nil {
+			s.logger.Errorf("Failed to create workflow run record: %v", err)
+			// Continue execution even if database write fails
+		} else {
+			s.mu.Lock()
+			s.currentRunID = runID
+			s.mu.Unlock()
+			s.logger.Infof("Created workflow run record with ID: %d", runID)
+		}
+	}
+
 	// Create a state-aware runner
 	err := workflow.RunWithCallbacks(ctx, cfg, s.logger, &workflowCallbacks{
 		state: s.state,
 	}, skipPRCheck)
 
 	duration := time.Since(start)
+
+	// Determine final status
+	finalStatus := "success"
+	if err != nil {
+		if ctx.Err() == context.Canceled {
+			finalStatus = "stopped"
+		} else {
+			finalStatus = "failed"
+		}
+	}
+
+	// Update database record if available
+	if s.db != nil && runID > 0 {
+		if dbErr := s.db.UpdateRunComplete(runID, finalStatus, time.Now()); dbErr != nil {
+			s.logger.Errorf("Failed to update workflow run record: %v", dbErr)
+		}
+	}
 
 	if err != nil {
 		s.state.CompleteWorkflow(false, err.Error())
@@ -717,4 +782,143 @@ func (s *Server) handleSwaggerUI(w http.ResponseWriter, r *http.Request) {
 </html>`
 	w.Header().Set("Content-Type", "text/html")
 	w.Write([]byte(html))
+}
+
+// GetHistory lists workflow run history with optional filters.
+func (s *Server) GetHistory(w http.ResponseWriter, r *http.Request, params api.GetHistoryParams) {
+	if s.db == nil {
+		http.Error(w, "Database not available", http.StatusInternalServerError)
+		return
+	}
+
+	// Set defaults
+	limit := 50
+	offset := 0
+	workflowPath := ""
+	status := ""
+
+	if params.Limit != nil {
+		limit = *params.Limit
+	}
+	if params.Offset != nil {
+		offset = *params.Offset
+	}
+	if params.WorkflowPath != nil {
+		workflowPath = *params.WorkflowPath
+	}
+	if params.Status != nil {
+		status = *params.Status
+	}
+
+	runs, err := s.db.GetRuns(limit, offset, workflowPath, status)
+	if err != nil {
+		s.logger.Errorf("Failed to get workflow runs: %v", err)
+		http.Error(w, "Failed to retrieve workflow runs", http.StatusInternalServerError)
+		return
+	}
+
+	// Convert to API format
+	apiRuns := make([]api.WorkflowRun, len(runs))
+	for i, run := range runs {
+		apiRuns[i] = api.WorkflowRun{
+			Id:             &run.ID,
+			WorkflowName:   &run.WorkflowName,
+			WorkflowPath:   &run.WorkflowPath,
+			StartTime:      &run.StartTime,
+			EndTime:        run.EndTime,
+			Status:         &run.Status,
+			Inputs:         &run.Inputs,
+			ConfigSnapshot: &run.ConfigSnapshot,
+			SkipPrCheck:    &run.SkipPRCheck,
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(apiRuns)
+}
+
+// GetHistoryRun retrieves a specific workflow run by ID.
+func (s *Server) GetHistoryRun(w http.ResponseWriter, r *http.Request, id int) {
+	if s.db == nil {
+		http.Error(w, "Database not available", http.StatusInternalServerError)
+		return
+	}
+
+	run, err := s.db.GetRun(int64(id))
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			http.Error(w, "Workflow run not found", http.StatusNotFound)
+		} else {
+			s.logger.Errorf("Failed to get workflow run: %v", err)
+			http.Error(w, "Failed to retrieve workflow run", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// Convert to API format
+	apiRun := api.WorkflowRun{
+		Id:             &run.ID,
+		WorkflowName:   &run.WorkflowName,
+		WorkflowPath:   &run.WorkflowPath,
+		StartTime:      &run.StartTime,
+		EndTime:        run.EndTime,
+		Status:         &run.Status,
+		Inputs:         &run.Inputs,
+		ConfigSnapshot: &run.ConfigSnapshot,
+		SkipPrCheck:    &run.SkipPRCheck,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(apiRun)
+}
+
+// GetDBPath returns the current database path.
+func (s *Server) GetDBPath(w http.ResponseWriter, r *http.Request) {
+	path := s.dbPath
+	resp := api.DBPathResponse{
+		Path: &path,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+// SetDBPath updates the database path in settings.
+func (s *Server) SetDBPath(w http.ResponseWriter, r *http.Request) {
+	var req api.DBPathRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.Path == nil || *req.Path == "" {
+		http.Error(w, "Path is required", http.StatusBadRequest)
+		return
+	}
+
+	newPath := *req.Path
+
+	// Save to settings
+	settings, err := settings.Load()
+	if err != nil {
+		s.logger.Errorf("Failed to load settings: %v", err)
+		http.Error(w, "Failed to load settings", http.StatusInternalServerError)
+		return
+	}
+
+	settings.DBPath = newPath
+	if err := settings.Save(); err != nil {
+		s.logger.Errorf("Failed to save settings: %v", err)
+		http.Error(w, "Failed to save settings", http.StatusInternalServerError)
+		return
+	}
+
+	s.logger.Infof("Database path updated to: %s (will take effect on restart)", newPath)
+
+	resp := api.DBPathResponse{
+		Path: &newPath,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
 }
