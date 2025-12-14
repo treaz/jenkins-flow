@@ -60,37 +60,13 @@ func NewDB(dbPath string) (*DB, error) {
 		path: dbPath,
 	}
 
-	// Initialize schema
-	if err := db.initSchema(); err != nil {
+	// Run database migrations
+	if err := db.runMigrations(); err != nil {
 		conn.Close()
-		return nil, fmt.Errorf("failed to initialize schema: %w", err)
+		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}
 
 	return db, nil
-}
-
-// initSchema creates the workflow_runs table if it doesn't exist.
-func (db *DB) initSchema() error {
-	schema := `
-	CREATE TABLE IF NOT EXISTS workflow_runs (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		workflow_name TEXT NOT NULL,
-		workflow_path TEXT NOT NULL,
-		start_time TIMESTAMP NOT NULL,
-		end_time TIMESTAMP,
-		status TEXT NOT NULL,
-		inputs_json TEXT NOT NULL,
-		config_snapshot TEXT NOT NULL,
-		skip_pr_check BOOLEAN NOT NULL DEFAULT 0
-	);
-
-	CREATE INDEX IF NOT EXISTS idx_workflow_runs_workflow_path ON workflow_runs(workflow_path);
-	CREATE INDEX IF NOT EXISTS idx_workflow_runs_status ON workflow_runs(status);
-	CREATE INDEX IF NOT EXISTS idx_workflow_runs_start_time ON workflow_runs(start_time DESC);
-	`
-
-	_, err := db.conn.Exec(schema)
-	return err
 }
 
 // CreateRun creates a new workflow run record with status "running".

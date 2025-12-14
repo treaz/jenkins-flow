@@ -287,6 +287,20 @@ Content-Type: application/json
 }
 ```
 
+### Database Migrations
+
+The database schema is managed through SQL migration files located in `pkg/database/migrations/`. This approach provides:
+
+- **Version control**: Each migration is a numbered SQL file (e.g., `001_initial_schema.sql`)
+- **Automatic application**: Migrations run automatically on startup, only applying new ones
+- **Tracking**: Applied migrations are recorded in the `schema_migrations` table
+- **Safety**: Migrations run in transactions, rolling back on failure
+
+To add a new migration:
+1. Create a new file in `pkg/database/migrations/` with the next version number (e.g., `002_add_new_column.sql`)
+2. Write your SQL migration code
+3. Rebuild and restart - the migration applies automatically
+
 ### Error Handling
 
 Database operations are designed to be non-blocking. If database writes fail, errors are logged but workflow execution continues normally.
