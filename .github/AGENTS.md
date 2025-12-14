@@ -239,7 +239,7 @@ export GITHUB_TOKEN="ghp_xxxxxxxxxxxx"
 ## External Dependencies
 
 - **terminal-notifier**: macOS notifications (install via `brew install terminal-notifier`)
-- **Go 1.20+**: Required for building
+- **Go 1.25.4+**: Required for building (as specified in go.mod)
 - **Node.js**: Required for frontend development
 - **oapi-codegen**: Auto-installed by `make generate-api`
 
