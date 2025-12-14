@@ -83,7 +83,7 @@ func TestDatabaseSchema(t *testing.T) {
 		SELECT name FROM sqlite_master 
 		WHERE type='table' AND name='workflow_runs'
 	`).Scan(&tableName)
-	
+
 	if err != nil {
 		t.Fatalf("workflow_runs table not found: %v", err)
 	}
