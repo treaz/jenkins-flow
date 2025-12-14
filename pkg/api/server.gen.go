@@ -12,11 +12,22 @@ import (
 	"net/url"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/go-chi/chi/v5"
 	"github.com/oapi-codegen/runtime"
 )
+
+// DBPathRequest defines model for DBPathRequest.
+type DBPathRequest struct {
+	Path *string `json:"path,omitempty"`
+}
+
+// DBPathResponse defines model for DBPathResponse.
+type DBPathResponse struct {
+	Path *string `json:"path,omitempty"`
+}
 
 // LogLevelRequest defines model for LogLevelRequest.
 type LogLevelRequest struct {
@@ -84,6 +95,19 @@ type WorkflowItemState struct {
 	Step       *StepState          `json:"step,omitempty"`
 }
 
+// WorkflowRun defines model for WorkflowRun.
+type WorkflowRun struct {
+	ConfigSnapshot *string            `json:"config_snapshot,omitempty"`
+	EndTime        *time.Time         `json:"end_time,omitempty"`
+	Id             *int64             `json:"id,omitempty"`
+	Inputs         *map[string]string `json:"inputs,omitempty"`
+	SkipPrCheck    *bool              `json:"skip_pr_check,omitempty"`
+	StartTime      *time.Time         `json:"start_time,omitempty"`
+	Status         *string            `json:"status,omitempty"`
+	WorkflowName   *string            `json:"workflow_name,omitempty"`
+	WorkflowPath   *string            `json:"workflow_path,omitempty"`
+}
+
 // WorkflowState defines model for WorkflowState.
 type WorkflowState struct {
 	Inputs *map[string]string   `json:"inputs,omitempty"`
@@ -92,17 +116,47 @@ type WorkflowState struct {
 	Status *string              `json:"status,omitempty"`
 }
 
+// GetHistoryParams defines parameters for GetHistory.
+type GetHistoryParams struct {
+	// Limit Maximum number of results to return
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Offset for pagination
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+
+	// WorkflowPath Filter by workflow path
+	WorkflowPath *string `form:"workflow_path,omitempty" json:"workflow_path,omitempty"`
+
+	// Status Filter by status (running, success, failed, stopped)
+	Status *string `form:"status,omitempty" json:"status,omitempty"`
+}
+
 // RunWorkflowJSONRequestBody defines body for RunWorkflow for application/json ContentType.
 type RunWorkflowJSONRequestBody = RunRequest
+
+// SetDBPathJSONRequestBody defines body for SetDBPath for application/json ContentType.
+type SetDBPathJSONRequestBody = DBPathRequest
 
 // SetLogLevelJSONRequestBody defines body for SetLogLevel for application/json ContentType.
 type SetLogLevelJSONRequestBody = LogLevelRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// List workflow run history
+	// (GET /api/history)
+	GetHistory(w http.ResponseWriter, r *http.Request, params GetHistoryParams)
+	// Get specific workflow run details
+	// (GET /api/history/{id})
+	GetHistoryRun(w http.ResponseWriter, r *http.Request, id int)
 	// Start a workflow
 	// (POST /api/run)
 	RunWorkflow(w http.ResponseWriter, r *http.Request)
+	// Get current database path
+	// (GET /api/settings/db-path)
+	GetDBPath(w http.ResponseWriter, r *http.Request)
+	// Update database path
+	// (PUT /api/settings/db-path)
+	SetDBPath(w http.ResponseWriter, r *http.Request)
 	// Get current log level
 	// (GET /api/settings/log-level)
 	GetLogLevel(w http.ResponseWriter, r *http.Request)
@@ -127,9 +181,33 @@ type ServerInterface interface {
 
 type Unimplemented struct{}
 
+// List workflow run history
+// (GET /api/history)
+func (_ Unimplemented) GetHistory(w http.ResponseWriter, r *http.Request, params GetHistoryParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get specific workflow run details
+// (GET /api/history/{id})
+func (_ Unimplemented) GetHistoryRun(w http.ResponseWriter, r *http.Request, id int) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // Start a workflow
 // (POST /api/run)
 func (_ Unimplemented) RunWorkflow(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get current database path
+// (GET /api/settings/db-path)
+func (_ Unimplemented) GetDBPath(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Update database path
+// (PUT /api/settings/db-path)
+func (_ Unimplemented) SetDBPath(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -178,11 +256,115 @@ type ServerInterfaceWrapper struct {
 
 type MiddlewareFunc func(http.Handler) http.Handler
 
+// GetHistory operation middleware
+func (siw *ServerInterfaceWrapper) GetHistory(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetHistoryParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", r.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "offset", r.URL.Query(), &params.Offset)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "workflow_path" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "workflow_path", r.URL.Query(), &params.WorkflowPath)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workflow_path", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "status", r.URL.Query(), &params.Status)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetHistory(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetHistoryRun operation middleware
+func (siw *ServerInterfaceWrapper) GetHistoryRun(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id int
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetHistoryRun(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // RunWorkflow operation middleware
 func (siw *ServerInterfaceWrapper) RunWorkflow(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RunWorkflow(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetDBPath operation middleware
+func (siw *ServerInterfaceWrapper) GetDBPath(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDBPath(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetDBPath operation middleware
+func (siw *ServerInterfaceWrapper) SetDBPath(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetDBPath(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -401,7 +583,19 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	}
 
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/history", wrapper.GetHistory)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/history/{id}", wrapper.GetHistoryRun)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/run", wrapper.RunWorkflow)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/settings/db-path", wrapper.GetDBPath)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/settings/db-path", wrapper.SetDBPath)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/settings/log-level", wrapper.GetLogLevel)
@@ -428,22 +622,29 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

@@ -10,6 +10,7 @@ A robust Go CLI tools to orchestrate Jenkins jobs linearly across multiple insta
 - **Fail Fast**: Stops immediately if a job fails (including cancellation of parallel siblings).
 - **Notifications**: macOS desktop notifications via `terminal-notifier`, with optional Slack integration.
 - **Secure Auth**: Separation of concerns with `instances.yaml` (ignored) and `workflow.yaml`.
+- **Workflow History**: SQLite database persists all workflow runs with inputs, status, and configuration snapshots.
 
 ## Installation
 
@@ -228,6 +229,86 @@ To create a Slack webhook:
 4. Add a new webhook to a channel
 5. Copy the webhook URL
 
+
+## Workflow History
+
+Jenkins Flow automatically persists all workflow runs to a SQLite database for historical tracking and auditing.
+
+### Database Location
+
+**Default**: `~/.config/jenkins-flow/jenkins-flow.db`
+
+**Custom path via CLI**:
+```bash
+./jenkins-flow -db-path /custom/path/jenkins-flow.db
+```
+
+**Custom path via UI**: Use the Settings API endpoint or update `~/.config/jenkins-flow/settings.json`:
+```json
+{
+  "db_path": "/custom/path/jenkins-flow.db"
+}
+```
+
+### What's Stored
+
+Each workflow run captures:
+- Workflow name and file path
+- Start and end timestamps
+- Final status (running, success, failed, stopped)
+- Input parameters (as JSON)
+- Complete workflow YAML configuration snapshot
+- Whether PR checks were skipped
+
+### API Endpoints
+
+**List workflow runs** (with pagination and filtering):
+```
+GET /api/history?limit=50&offset=0&workflow_path=workflows/deploy.yaml&status=success
+```
+
+**Get specific run**:
+```
+GET /api/history/{id}
+```
+
+**Get current database path**:
+```
+GET /api/settings/db-path
+```
+
+**Update database path** (requires restart):
+```
+PUT /api/settings/db-path
+Content-Type: application/json
+
+{
+  "path": "/new/path/jenkins-flow.db"
+}
+```
+
+### Database Migrations
+
+The database schema is managed using [golang-migrate](https://github.com/golang-migrate/migrate), a popular database migration library. Migration files are located in `pkg/database/migrations/`. This approach provides:
+
+- **Version control**: Migrations use numbered files (e.g., `000001_initial_schema.up.sql` and `000001_initial_schema.down.sql`)
+- **Automatic application**: Migrations run automatically on startup, applying only pending migrations
+- **Tracking**: Applied migrations are recorded in the `schema_migrations` table
+- **Safety**: Migrations run in transactions with automatic rollback on failure
+- **Reversibility**: Both up and down migrations supported
+
+To add a new migration:
+1. Create two files in `pkg/database/migrations/`:
+   - `000002_description.up.sql` - Forward migration
+   - `000002_description.down.sql` - Rollback migration
+2. Write your SQL migration code in both files
+3. Rebuild and restart - the migration applies automatically
+
+The library handles version tracking, dirty state detection, and ensures migrations are idempotent.
+
+### Error Handling
+
+Database operations are designed to be non-blocking. If database writes fail, errors are logged but workflow execution continues normally.
 
 ## Development
 
