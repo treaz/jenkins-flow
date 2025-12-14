@@ -289,17 +289,22 @@ Content-Type: application/json
 
 ### Database Migrations
 
-The database schema is managed through SQL migration files located in `pkg/database/migrations/`. This approach provides:
+The database schema is managed using [golang-migrate](https://github.com/golang-migrate/migrate), a popular database migration library. Migration files are located in `pkg/database/migrations/`. This approach provides:
 
-- **Version control**: Each migration is a numbered SQL file (e.g., `001_initial_schema.sql`)
-- **Automatic application**: Migrations run automatically on startup, only applying new ones
+- **Version control**: Migrations use numbered files (e.g., `000001_initial_schema.up.sql` and `000001_initial_schema.down.sql`)
+- **Automatic application**: Migrations run automatically on startup, applying only pending migrations
 - **Tracking**: Applied migrations are recorded in the `schema_migrations` table
-- **Safety**: Migrations run in transactions, rolling back on failure
+- **Safety**: Migrations run in transactions with automatic rollback on failure
+- **Reversibility**: Both up and down migrations supported
 
 To add a new migration:
-1. Create a new file in `pkg/database/migrations/` with the next version number (e.g., `002_add_new_column.sql`)
-2. Write your SQL migration code
+1. Create two files in `pkg/database/migrations/`:
+   - `000002_description.up.sql` - Forward migration
+   - `000002_description.down.sql` - Rollback migration
+2. Write your SQL migration code in both files
 3. Rebuild and restart - the migration applies automatically
+
+The library handles version tracking, dirty state detection, and ensures migrations are idempotent.
 
 ### Error Handling
 

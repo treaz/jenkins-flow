@@ -16,21 +16,17 @@ func TestMigrations(t *testing.T) {
 	}
 	defer db.Close()
 
-	// Verify schema_migrations table exists
-	var count int
-	err = db.conn.QueryRow("SELECT COUNT(*) FROM schema_migrations").Scan(&count)
-	if err != nil {
-		t.Fatalf("schema_migrations table doesn't exist: %v", err)
-	}
-
-	if count == 0 {
-		t.Error("expected at least one migration to be applied")
-	}
-
 	// Verify workflow_runs table exists
+	var count int
 	err = db.conn.QueryRow("SELECT COUNT(*) FROM workflow_runs").Scan(&count)
 	if err != nil {
 		t.Fatalf("workflow_runs table doesn't exist: %v", err)
+	}
+
+	// Verify schema_migrations table exists (created by golang-migrate)
+	err = db.conn.QueryRow("SELECT COUNT(*) FROM schema_migrations").Scan(&count)
+	if err != nil {
+		t.Fatalf("schema_migrations table doesn't exist: %v", err)
 	}
 }
 
@@ -69,48 +65,52 @@ func TestMigrationsIdempotent(t *testing.T) {
 	if run.WorkflowName != "Test" {
 		t.Errorf("expected WorkflowName 'Test', got %q", run.WorkflowName)
 	}
-
-	// Verify migration count hasn't changed
-	var count int
-	err = db2.conn.QueryRow("SELECT COUNT(*) FROM schema_migrations").Scan(&count)
-	if err != nil {
-		t.Fatalf("failed to count migrations: %v", err)
-	}
-
-	// Should have exactly 1 migration applied
-	if count != 1 {
-		t.Errorf("expected 1 migration, got %d (migrations should not be reapplied)", count)
-	}
 }
 
-func TestLoadMigrations(t *testing.T) {
-	migrations, err := loadMigrations()
+func TestDatabaseSchema(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test-schema.db")
+
+	db, err := NewDB(dbPath)
 	if err != nil {
-		t.Fatalf("loadMigrations failed: %v", err)
+		t.Fatalf("NewDB failed: %v", err)
+	}
+	defer db.Close()
+
+	// Test that we can query the schema
+	var tableName string
+	err = db.conn.QueryRow(`
+		SELECT name FROM sqlite_master 
+		WHERE type='table' AND name='workflow_runs'
+	`).Scan(&tableName)
+	
+	if err != nil {
+		t.Fatalf("workflow_runs table not found: %v", err)
 	}
 
-	if len(migrations) == 0 {
-		t.Error("expected at least one migration to be loaded")
+	if tableName != "workflow_runs" {
+		t.Errorf("expected table name 'workflow_runs', got %q", tableName)
 	}
 
-	// Verify migrations are sorted by version
-	for i := 1; i < len(migrations); i++ {
-		if migrations[i].Version <= migrations[i-1].Version {
-			t.Errorf("migrations not sorted: migration %d (version %d) comes after migration %d (version %d)",
-				i, migrations[i].Version, i-1, migrations[i-1].Version)
-		}
+	// Verify indexes exist
+	rows, err := db.conn.Query(`
+		SELECT name FROM sqlite_master 
+		WHERE type='index' AND tbl_name='workflow_runs'
+	`)
+	if err != nil {
+		t.Fatalf("failed to query indexes: %v", err)
+	}
+	defer rows.Close()
+
+	indexCount := 0
+	for rows.Next() {
+		var name string
+		rows.Scan(&name)
+		indexCount++
 	}
 
-	// Verify first migration
-	if migrations[0].Version != 1 {
-		t.Errorf("expected first migration version to be 1, got %d", migrations[0].Version)
-	}
-
-	if migrations[0].Name != "initial_schema" {
-		t.Errorf("expected first migration name 'initial_schema', got %q", migrations[0].Name)
-	}
-
-	if len(migrations[0].SQL) == 0 {
-		t.Error("expected migration SQL to be non-empty")
+	// We expect at least 3 indexes (plus possibly sqlite's internal indexes)
+	if indexCount < 3 {
+		t.Errorf("expected at least 3 indexes, found %d", indexCount)
 	}
 }
