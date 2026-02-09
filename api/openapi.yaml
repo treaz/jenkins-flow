@@ -336,6 +336,14 @@ components:
           type: string
         status:
           type: string
+        error:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
         htmlUrl:
           type: string
         title:

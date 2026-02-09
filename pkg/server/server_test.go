@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/treaz/jenkins-flow/pkg/api"
+	"github.com/treaz/jenkins-flow/pkg/config"
 	"github.com/treaz/jenkins-flow/pkg/logger"
 )
 
@@ -149,5 +150,32 @@ func TestHandleListWorkflows(t *testing.T) {
 	}
 	if unknownWF.Error == nil || *unknownWF.Error == "" {
 		t.Error("expected error for unknown instance workflow")
+	}
+}
+
+func TestApplyInputSubstitutions_PRWaitHeadBranch(t *testing.T) {
+	cfg := &config.Config{
+		Inputs: map[string]string{
+			"git_branch_to_merge": "PAYMENTS-3096_update_threshold",
+		},
+		Workflow: []config.WorkflowItem{
+			{
+				WaitForPR: &config.PRWait{
+					Name:       "Wait for Release PR",
+					Owner:      "chargepoint-emu",
+					Repo:       "nos",
+					HeadBranch: "${git_branch_to_merge}",
+					WaitFor:    "merged",
+				},
+			},
+		},
+	}
+
+	srv := &Server{}
+	srv.applyInputSubstitutions(cfg)
+
+	got := cfg.Workflow[0].WaitForPR.HeadBranch
+	if got != "PAYMENTS-3096_update_threshold" {
+		t.Fatalf("expected head_branch to be substituted, got %q", got)
 	}
 }

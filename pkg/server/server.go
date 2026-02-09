@@ -243,6 +243,8 @@ func (s *Server) GetWorkflowDefinition(w http.ResponseWriter, r *http.Request, n
 		return
 	}
 
+	s.applyInputSubstitutions(cfg)
+
 	// Helper to convert config items to initial internal state, then to API state
 	internalItems := s.configToStateItems(cfg)
 	// We need to construct a "dummy" pending state to convert to API response
@@ -329,6 +331,8 @@ func (s *Server) RunWorkflow(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+
+	s.applyInputSubstitutions(cfg)
 
 	// Initialize state from config
 	items := s.configToStateItems(cfg)
@@ -520,6 +524,33 @@ func (s *Server) configToStateItems(cfg *config.Config) []WorkflowItemState {
 	return items
 }
 
+func (s *Server) applyInputSubstitutions(cfg *config.Config) {
+	if cfg == nil || len(cfg.Inputs) == 0 {
+		return
+	}
+
+	for i := range cfg.Workflow {
+		item := &cfg.Workflow[i]
+		if !item.IsPRWait() || item.WaitForPR == nil {
+			continue
+		}
+
+		pr := item.WaitForPR
+		pr.Name = substituteIfTemplate(pr.Name, cfg.Inputs)
+		pr.Owner = substituteIfTemplate(pr.Owner, cfg.Inputs)
+		pr.Repo = substituteIfTemplate(pr.Repo, cfg.Inputs)
+		pr.HeadBranch = substituteIfTemplate(pr.HeadBranch, cfg.Inputs)
+		pr.WaitFor = substituteIfTemplate(pr.WaitFor, cfg.Inputs)
+	}
+}
+
+func substituteIfTemplate(value string, inputs map[string]string) string {
+	if value == "" || len(inputs) == 0 || !strings.Contains(value, "${") {
+		return value
+	}
+
+	return config.Substitute(value, inputs)
+}
 // runWorkflow executes the workflow and updates state.
 func (s *Server) runWorkflow(ctx context.Context, cfg *config.Config, workflowPath string, skipPRCheck bool) {
 	defer func() {
