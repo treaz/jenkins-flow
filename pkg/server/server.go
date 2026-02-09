@@ -551,6 +551,7 @@ func substituteIfTemplate(value string, inputs map[string]string) string {
 
 	return config.Substitute(value, inputs)
 }
+
 // runWorkflow executes the workflow and updates state.
 func (s *Server) runWorkflow(ctx context.Context, cfg *config.Config, workflowPath string, skipPRCheck bool) {
 	defer func() {
