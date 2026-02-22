@@ -251,6 +251,30 @@ func (sm *StateManager) CompletePRWait(itemIndex int) {
 	prState.EndedAt = &now
 }
 
+// SkipPRWait marks the PR wait item as skipped.
+func (sm *StateManager) SkipPRWait(itemIndex int) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	if sm.current == nil || itemIndex >= len(sm.current.Items) {
+		return
+	}
+
+	item := &sm.current.Items[itemIndex]
+	if !item.IsPRWait || item.PRWait == nil {
+		return
+	}
+
+	now := time.Now()
+	prState := item.PRWait
+	prState.Status = StatusSkipped
+	prState.Error = ""
+	if prState.StartedAt == nil {
+		prState.StartedAt = &now
+	}
+	prState.EndedAt = &now
+}
+
 // FailPRWait marks the PR wait item as failed with an error message.
 func (sm *StateManager) FailPRWait(itemIndex int, errMsg string) {
 	sm.mu.Lock()

@@ -14,11 +14,12 @@
       />
       
       <div class="content-area">
-        <WorkflowView 
-          v-if="displayWorkflow" 
-          :workflow="displayWorkflow" 
+        <WorkflowView
+          v-if="displayWorkflow"
+          :workflow="displayWorkflow"
           :is-running="isRunning"
-          @run="openRunModal"
+          :is-starting-run="isStartingRun"
+          @run="handleRun"
           @stop="triggerStop"
         />
         <div v-else-if="selectedWorkflow" class="workflow-preview">
@@ -30,14 +31,6 @@
         </div>
       </div>
     </main>
-    
-    <RunWorkflowModal
-      :is-open="isRunModalOpen"
-      :inputs="workflowInputs"
-      :is-loading="isStartingRun"
-      @close="isRunModalOpen = false"
-      @run="handleRunSubmit"
-    />
     
     <SettingsModal
       :is-open="isSettingsModalOpen"
@@ -56,7 +49,6 @@ import WorkflowView from './components/WorkflowView.vue'
 import ToastNotification from './components/ToastNotification.vue'
 import AppHeader from './components/AppHeader.vue'
 import AppSidebar from './components/AppSidebar.vue'
-import RunWorkflowModal from './components/RunWorkflowModal.vue'
 import SettingsModal from './components/SettingsModal.vue'
 import { fetchWorkflows, fetchStatus, runWorkflow, stopWorkflow, fetchLogLevel, setLogLevel, fetchWorkflowDefinition } from './api/client'
 
@@ -71,7 +63,6 @@ const toast = ref(null)
 const pendingDefinitions = new Set()
 
 // Modal states
-const isRunModalOpen = ref(false)
 const isSettingsModalOpen = ref(false)
 const isStartingRun = ref(false)
 
@@ -85,11 +76,6 @@ const displayWorkflow = computed(() => {
   }
 
   return workflowDefinitions.value[selected] || null
-})
-
-const workflowInputs = computed(() => {
-  if (!displayWorkflow.value) return {}
-  return displayWorkflow.value.inputs || {}
 })
 
 const getWorkflowName = (path) => {
@@ -170,15 +156,10 @@ const selectWorkflow = (path) => {
   loadWorkflowDefinition(path)
 }
 
-const openRunModal = () => {
-  isRunModalOpen.value = true
-}
-
-const handleRunSubmit = async (options) => {
+const handleRun = async ({ disabledSteps = [], inputs = {} } = {}) => {
   isStartingRun.value = true
   try {
-    await runWorkflow(selectedWorkflow.value, options)
-    isRunModalOpen.value = false
+    await runWorkflow(selectedWorkflow.value, { inputs, disabledSteps })
     toast.value.add({
       title: 'Workflow Started',
       message: `Successfully started ${getWorkflowName(selectedWorkflow.value)}`,

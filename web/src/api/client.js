@@ -38,14 +38,16 @@ export async function fetchWorkflowDefinition(workflowPath) {
 /**
  * Triggers a workflow run.
  * @param {string} workflowPath - Path to the workflow file
- * @param {boolean} skipPRCheck - Whether to skip PR checks
+ * @param {Object} options
+ * @param {Object} options.inputs - Workflow input values
+ * @param {Array} options.disabledSteps - Steps to skip
  * @returns {Promise<{status: string}>}
  */
-export async function runWorkflow(workflowPath, { skipPRCheck = false, inputs = {} } = {}) {
+export async function runWorkflow(workflowPath, { inputs = {}, disabledSteps = [] } = {}) {
     const res = await fetch(`${API_BASE}/api/run`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workflow: workflowPath, skipPRCheck, inputs })
+        body: JSON.stringify({ workflow: workflowPath, inputs, disabledSteps })
     });
     if (!res.ok) {
         const text = await res.text();

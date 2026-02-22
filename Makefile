@@ -4,7 +4,7 @@
 BINARY_NAME=jenkins-flow
 MAIN_PATH=cmd/jenkins-flow/main.go
 
-.PHONY: all build run clean test deps help serve stop-server
+.PHONY: all build run clean test deps help serve stop-server mock-jenkins
 
 ## build-web: Build the Vue frontend
 build-web:
@@ -39,6 +39,10 @@ stop-server:
 	else \
 		echo "No $(BINARY_NAME) process found."; \
 	fi
+
+## mock-jenkins: Run a local mock Jenkins server for smoke testing (port 9090)
+mock-jenkins:
+	go run ./cmd/mock-jenkins
 
 ## deps: Download and tidy dependencies
 deps:

@@ -15,16 +15,16 @@
       </div>
       
       <div class="workflow-controls">
-        <button 
-          v-if="!isRunning" 
+        <button
+          v-if="!isRunning"
           class="btn btn-primary"
-          :disabled="hasError"
-          @click="$emit('run')"
+          :disabled="hasError || isStartingRun"
+          @click="emitRun"
         >
-           Run Workflow
+          {{ isStartingRun ? 'Starting...' : 'Run Workflow' }}
         </button>
-        <button 
-          v-else 
+        <button
+          v-else
           class="btn btn-danger"
           @click="$emit('stop')"
         >
@@ -36,7 +36,14 @@
     <div v-if="workflow.error" class="workflow-error">
       {{ workflow.error }}
     </div>
-    
+
+    <div v-if="!isRunning && hasInputs" class="workflow-inputs">
+      <div v-for="(_, key) in localInputs" :key="key" class="input-group">
+        <label :for="`input-${key}`">{{ key }}</label>
+        <input :id="`input-${key}`" v-model="localInputs[key]" type="text" class="input-field" />
+      </div>
+    </div>
+
     <div class="workflow-items">
       <div v-for="(item, index) in workflow.items" :key="index" class="workflow-item">
         <div class="item-connector" v-if="index > 0">
@@ -49,6 +56,9 @@
           :status="item.parallel?.status || 'pending'"
           :is-parallel="true"
           :steps="item.parallel?.steps"
+          :show-toggle="!isRunning"
+          :disabled-sub-steps="getDisabledForItem(index)"
+          @toggle-sub-step="(stepIndex) => toggleStep(index, stepIndex)"
         />
         <PRWaitCard
           v-else-if="item.isPRWait"
@@ -64,6 +74,9 @@
           :error="item.prWait?.error"
           :started-at="item.prWait?.startedAt"
           :ended-at="item.prWait?.endedAt"
+          :show-toggle="!isRunning"
+          :enabled="!isDisabled(index, 0)"
+          @toggle="toggleStep(index, 0)"
         />
         <StepCard
           v-else
@@ -75,6 +88,9 @@
           :error="item.step?.error"
           :started-at="item.step?.startedAt"
           :ended-at="item.step?.endedAt"
+          :show-toggle="!isRunning"
+          :enabled="!isDisabled(index, 0)"
+          @toggle="toggleStep(index, 0)"
         />
       </div>
     </div>
@@ -88,17 +104,63 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import StepCard from './StepCard.vue'
 import StatusBadge from './StatusBadge.vue'
 import PRWaitCard from './PRWaitCard.vue'
 
 const props = defineProps({
   workflow: Object,
-  isRunning: Boolean
+  isRunning: Boolean,
+  isStartingRun: Boolean
 })
 
-defineEmits(['run', 'stop'])
+const emit = defineEmits(['run', 'stop'])
+
+// Set of disabled step keys like "itemIndex:stepIndex"
+const disabledSteps = ref(new Set())
+const localInputs = ref({})
+
+// Reset state when a different workflow is selected
+watch(() => props.workflow?.name, () => {
+  disabledSteps.value = new Set()
+  localInputs.value = { ...(props.workflow?.inputs || {}) }
+}, { immediate: true })
+
+const isDisabled = (itemIndex, stepIndex) => {
+  return disabledSteps.value.has(`${itemIndex}:${stepIndex}`)
+}
+
+const toggleStep = (itemIndex, stepIndex) => {
+  const key = `${itemIndex}:${stepIndex}`
+  const next = new Set(disabledSteps.value)
+  if (next.has(key)) {
+    next.delete(key)
+  } else {
+    next.add(key)
+  }
+  disabledSteps.value = next
+}
+
+const getDisabledForItem = (itemIndex) => {
+  const result = new Set()
+  for (const key of disabledSteps.value) {
+    const [iStr, sStr] = key.split(':')
+    if (parseInt(iStr) === itemIndex) {
+      result.add(parseInt(sStr))
+    }
+  }
+  return result
+}
+
+const emitRun = () => {
+  const disabledList = []
+  for (const key of disabledSteps.value) {
+    const [iStr, sStr] = key.split(':')
+    disabledList.push({ itemIndex: parseInt(iStr), stepIndex: parseInt(sStr) })
+  }
+  emit('run', { disabledSteps: disabledList, inputs: { ...localInputs.value } })
+}
 
 const formatTime = (isoString) => {
   if (!isoString) return ''
@@ -106,17 +168,17 @@ const formatTime = (isoString) => {
   return date.toLocaleTimeString()
 }
 
-const hasError = computed(() => {
-  return !!props.workflow?.error
-})
+const hasError = computed(() => !!props.workflow?.error)
+
+const hasInputs = computed(() => Object.keys(localInputs.value).length > 0)
 
 const totalDuration = computed(() => {
   if (!props.workflow?.startedAt) return null
-  
+
   const start = new Date(props.workflow.startedAt)
   const end = props.workflow.endedAt ? new Date(props.workflow.endedAt) : new Date()
   const diff = Math.floor((end - start) / 1000)
-  
+
   if (diff < 60) return `${diff}s`
   if (diff < 3600) return `${Math.floor(diff / 60)}m ${diff % 60}s`
   return `${Math.floor(diff / 3600)}h ${Math.floor((diff % 3600) / 60)}m`
@@ -160,6 +222,47 @@ const totalDuration = computed(() => {
   color: var(--status-failed);
   font-family: monospace;
   font-size: 13px;
+}
+
+.workflow-inputs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 24px;
+  padding: 16px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 180px;
+  flex: 1;
+}
+
+.input-group label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.input-field {
+  padding: 7px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.input-field:focus {
+  outline: none;
+  border-color: var(--accent);
 }
 
 .workflow-items {

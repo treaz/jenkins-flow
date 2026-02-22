@@ -1,0 +1,41 @@
+name: Smoke Test (mock Jenkins)
+# Run this workflow against the local mock Jenkins server.
+# Start the mock server first:
+#   make mock-jenkins
+#
+# Then configure instances.yaml with a "mock" instance pointing at
+# http://localhost:9090 (see instances.yaml.template for the format).
+
+inputs:
+  branch: main
+  env: staging
+
+workflow:
+  - name: "Build"
+    instance: mock
+    job: /job/my-app/build
+    params:
+      BRANCH: "${branch}"
+
+  - parallel:
+      name: "Deploy to regions"
+      steps:
+        - name: "Deploy US"
+          instance: mock
+          job: /job/my-app/deploy
+          params:
+            REGION: us-east-1
+            ENV: "${env}"
+
+        - name: "Deploy EU"
+          instance: mock
+          job: /job/my-app/deploy
+          params:
+            REGION: eu-west-1
+            ENV: "${env}"
+
+  - name: "Integration Tests"
+    instance: mock
+    job: /job/my-app/integration-tests
+    params:
+      ENV: "${env}"

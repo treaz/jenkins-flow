@@ -250,8 +250,18 @@ components:
           type: object
           additionalProperties:
             type: string
-        skipPRCheck:
-          type: boolean
+        disabledSteps:
+          type: array
+          items:
+            $ref: '#/components/schemas/DisabledStep'
+
+    DisabledStep:
+      type: object
+      properties:
+        itemIndex:
+          type: integer
+        stepIndex:
+          type: integer
     
     LogLevelRequest:
       type: object
@@ -373,8 +383,6 @@ components:
             type: string
         config_snapshot:
           type: string
-        skip_pr_check:
-          type: boolean
     
     DBPathRequest:
       type: object

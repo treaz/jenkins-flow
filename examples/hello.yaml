@@ -1,10 +1,11 @@
 name: Hello World Example
 inputs:
   name: "User"
+  name2: "User"
 
 workflow:
   - name: "Say Hello"
     instance: "dev" # Assuming a 'dev' instance exists or using a dummy one for structure
     job: "utils/echo"
     params:
-      MSG: "Hello, ${name}!"
+      MSG: "Hello, ${name} ${name2}!"

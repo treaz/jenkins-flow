@@ -24,6 +24,12 @@ type DBPathRequest struct {
 	Path *string `json:"path,omitempty"`
 }
 
+// DisabledStep defines model for DisabledStep.
+type DisabledStep struct {
+	ItemIndex int `json:"itemIndex"`
+	StepIndex int `json:"stepIndex"`
+}
+
 // DBPathResponse defines model for DBPathResponse.
 type DBPathResponse struct {
 	Path *string `json:"path,omitempty"`
@@ -59,9 +65,9 @@ type ParallelGroupState struct {
 
 // RunRequest defines model for RunRequest.
 type RunRequest struct {
-	Inputs      *map[string]string `json:"inputs,omitempty"`
-	SkipPRCheck *bool              `json:"skipPRCheck,omitempty"`
-	Workflow    *string            `json:"workflow,omitempty"`
+	DisabledSteps *[]DisabledStep    `json:"disabledSteps,omitempty"`
+	Inputs        *map[string]string `json:"inputs,omitempty"`
+	Workflow      *string            `json:"workflow,omitempty"`
 }
 
 // StatusResponse defines model for StatusResponse.
@@ -104,7 +110,6 @@ type WorkflowRun struct {
 	EndTime        *time.Time         `json:"end_time,omitempty"`
 	Id             *int64             `json:"id,omitempty"`
 	Inputs         *map[string]string `json:"inputs,omitempty"`
-	SkipPrCheck    *bool              `json:"skip_pr_check,omitempty"`
 	StartTime      *time.Time         `json:"start_time,omitempty"`
 	Status         *string            `json:"status,omitempty"`
 	WorkflowName   *string            `json:"workflow_name,omitempty"`

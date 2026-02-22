@@ -1,8 +1,16 @@
 <template>
-  <div class="step-card" :class="{ 'is-parallel': isParallel }">
+  <div class="step-card" :class="{ 'is-parallel': isParallel, 'step-card--disabled': !enabled }">
     <div class="step-header">
       <div class="step-info">
-        <h3 class="step-name">{{ name }}</h3>
+        <label v-if="showToggle && !isParallel" class="step-toggle">
+          <input
+            type="checkbox"
+            :checked="enabled"
+            @change="$emit('toggle')"
+          />
+          <h3 class="step-name">{{ name }}</h3>
+        </label>
+        <h3 v-else class="step-name">{{ name }}</h3>
         <div class="step-meta" v-if="!isParallel">
           <span class="instance" v-if="instance">{{ instance }}</span>
           <span class="job" v-if="job">{{ job }}</span>
@@ -16,19 +24,19 @@
         <StatusBadge :status="status" />
       </component>
     </div>
-    
+
     <div v-if="buildUrl" class="build-link">
       <a :href="buildUrl" target="_blank" rel="noopener">{{ buildUrl }}</a>
     </div>
-    
+
     <div v-if="error" class="error-message">
       {{ error }}
     </div>
-    
+
     <div v-if="duration" class="duration">
       {{ duration }}
     </div>
-    
+
     <!-- Parallel steps container -->
     <div v-if="isParallel && steps" class="parallel-steps">
       <StepCard
@@ -42,6 +50,9 @@
         :error="step.error"
         :started-at="step.startedAt"
         :ended-at="step.endedAt"
+        :show-toggle="showToggle"
+        :enabled="!disabledSubSteps?.has(index)"
+        @toggle="$emit('toggle-sub-step', index)"
       />
     </div>
   </div>
@@ -61,8 +72,13 @@ const props = defineProps({
   startedAt: String,
   endedAt: String,
   isParallel: Boolean,
-  steps: Array
+  steps: Array,
+  enabled: { type: Boolean, default: true },
+  showToggle: { type: Boolean, default: false },
+  disabledSubSteps: { type: Set, default: () => new Set() }
 })
+
+defineEmits(['toggle', 'toggle-sub-step'])
 
 const duration = computed(() => {
   if (!props.startedAt) return null
@@ -191,5 +207,28 @@ const statusLinkProps = computed(() => {
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 12px;
   margin-top: 16px;
+}
+
+.step-card--disabled {
+  opacity: 0.5;
+}
+
+.step-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  margin-bottom: 4px;
+}
+
+.step-toggle input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.step-toggle .step-name {
+  margin-bottom: 0;
 }
 </style>

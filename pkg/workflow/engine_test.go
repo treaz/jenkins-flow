@@ -167,7 +167,7 @@ func TestRunParallelGroup_FailFast(t *testing.T) {
 	}
 }
 
-func TestRun_MixedWorkflow(t *testing.T) {
+func TestRunWithCallbacks_MixedWorkflow(t *testing.T) {
 	var triggered int32
 	server := mockJenkinsServer(&triggered)
 	defer server.Close()
@@ -203,9 +203,9 @@ func TestRun_MixedWorkflow(t *testing.T) {
 	}
 
 	l := logger.New(logger.Error)
-	err := Run(context.Background(), cfg, l, false)
+	err := RunWithCallbacks(context.Background(), cfg, l, nil, DisabledSet{})
 	if err != nil {
-		t.Fatalf("Run failed: %v", err)
+		t.Fatalf("RunWithCallbacks failed: %v", err)
 	}
 
 	// Total: 1 + 2 + 1 = 4 triggers

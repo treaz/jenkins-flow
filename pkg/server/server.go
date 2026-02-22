@@ -344,13 +344,18 @@ func (s *Server) RunWorkflow(w http.ResponseWriter, r *http.Request) {
 	s.cancelFn = cancel
 	s.mu.Unlock()
 
-	// Parse optional skipPRCheck
-	skipPRCheck := false
-	if req.SkipPRCheck != nil && *req.SkipPRCheck {
-		skipPRCheck = true
+	// Parse disabled steps
+	disabledSet := workflow.DisabledSet{}
+	if req.DisabledSteps != nil {
+		for _, ds := range *req.DisabledSteps {
+			if disabledSet[ds.ItemIndex] == nil {
+				disabledSet[ds.ItemIndex] = make(map[int]bool)
+			}
+			disabledSet[ds.ItemIndex][ds.StepIndex] = true
+		}
 	}
 
-	go s.runWorkflow(ctx, cfg, workflowPath, skipPRCheck)
+	go s.runWorkflow(ctx, cfg, workflowPath, disabledSet)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "started"})
@@ -553,7 +558,7 @@ func substituteIfTemplate(value string, inputs map[string]string) string {
 }
 
 // runWorkflow executes the workflow and updates state.
-func (s *Server) runWorkflow(ctx context.Context, cfg *config.Config, workflowPath string, skipPRCheck bool) {
+func (s *Server) runWorkflow(ctx context.Context, cfg *config.Config, workflowPath string, disabledSet workflow.DisabledSet) {
 	defer func() {
 		s.mu.Lock()
 		s.cancelFn = nil
@@ -587,7 +592,7 @@ func (s *Server) runWorkflow(ctx context.Context, cfg *config.Config, workflowPa
 	var runID int64
 	if s.db != nil {
 		var err error
-		runID, err = s.db.CreateRun(cfg.Name, workflowPath, configSnapshot, cfg.Inputs, skipPRCheck)
+		runID, err = s.db.CreateRun(cfg.Name, workflowPath, configSnapshot, cfg.Inputs)
 		if err != nil {
 			s.logger.Errorf("Failed to create workflow run record: %v", err)
 			// Continue execution even if database write fails
@@ -602,7 +607,7 @@ func (s *Server) runWorkflow(ctx context.Context, cfg *config.Config, workflowPa
 	// Create a state-aware runner
 	err := workflow.RunWithCallbacks(ctx, cfg, s.logger, &workflowCallbacks{
 		state: s.state,
-	}, skipPRCheck)
+	}, disabledSet)
 
 	duration := time.Since(start)
 
@@ -745,6 +750,10 @@ func (c *workflowCallbacks) OnStepComplete(itemIndex, stepIndex int, name, resul
 	c.state.UpdateStepStatus(itemIndex, stepIndex, status, result, errMsg, "")
 }
 
+func (c *workflowCallbacks) OnStepSkipped(itemIndex, stepIndex int, name string) {
+	c.state.UpdateStepStatus(itemIndex, stepIndex, StatusSkipped, "SKIPPED", "", "")
+}
+
 func (c *workflowCallbacks) OnPRWaitStart(itemIndex int, pr *config.PRWait) {
 	if pr == nil {
 		return
@@ -775,6 +784,10 @@ func (c *workflowCallbacks) OnPRWaitFailed(itemIndex int, pr *config.PRWait, err
 		c.state.UpdatePRWaitMetadata(itemIndex, pr.PRNumber, pr.ResolvedURL, pr.ResolvedTitle)
 	}
 	c.state.FailPRWait(itemIndex, errMsg)
+}
+
+func (c *workflowCallbacks) OnPRWaitSkipped(itemIndex int, pr *config.PRWait) {
+	c.state.SkipPRWait(itemIndex)
 }
 
 // handleOpenAPISpec serves the OpenAPI specification as JSON
@@ -860,7 +873,6 @@ func (s *Server) GetHistory(w http.ResponseWriter, r *http.Request, params api.G
 			Status:         &run.Status,
 			Inputs:         &run.Inputs,
 			ConfigSnapshot: &run.ConfigSnapshot,
-			SkipPrCheck:    &run.SkipPRCheck,
 		}
 	}
 
@@ -896,7 +908,6 @@ func (s *Server) GetHistoryRun(w http.ResponseWriter, r *http.Request, id int) {
 		Status:         &run.Status,
 		Inputs:         &run.Inputs,
 		ConfigSnapshot: &run.ConfigSnapshot,
-		SkipPrCheck:    &run.SkipPRCheck,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

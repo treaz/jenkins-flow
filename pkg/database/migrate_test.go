@@ -42,7 +42,7 @@ func TestMigrationsIdempotent(t *testing.T) {
 
 	// Insert a test record
 	inputs := map[string]string{"test": "value"}
-	runID, err := db1.CreateRun("Test", "test.yaml", "config", inputs, false)
+	runID, err := db1.CreateRun("Test", "test.yaml", "config", inputs)
 	if err != nil {
 		t.Fatalf("CreateRun failed: %v", err)
 	}

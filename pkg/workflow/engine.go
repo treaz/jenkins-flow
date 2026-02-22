@@ -21,89 +21,31 @@ type StepResult struct {
 	Error    error
 }
 
-// Run executes the defined workflow, supporting both sequential and parallel steps.
-func Run(ctx context.Context, cfg *config.Config, l *logger.Logger, skipPRCheck bool) error {
-	l.Infof("Starting workflow execution...")
-	start := time.Now()
+// DisabledSet is a map of itemIndex -> set of disabled stepIndexes.
+type DisabledSet map[int]map[int]bool
 
-	for i, item := range cfg.Workflow {
-		if item.IsPRWait() {
-			// Execute PR wait
-			pr := item.WaitForPR
-			target := describePRTarget(pr)
-			l.Infof("[%d/%d] Waiting for %s (%s/%s) to be %s...",
-				i+1, len(cfg.Workflow), target, pr.Owner, pr.Repo, pr.WaitFor)
-
-			if skipPRCheck {
-				l.Infof("Skipping PR check as requested by user.")
-			} else {
-				if err := runPRWait(ctx, cfg, pr, l, nil, i); err != nil {
-					return fmt.Errorf("PR wait %q failed: %w", pr.Name, err)
-				}
-			}
-
-			resolved := describeResolvedPR(pr)
-			l.Infof("[%d/%d] %s is now %s. Continuing workflow...",
-				i+1, len(cfg.Workflow), resolved, pr.WaitFor)
-		} else if item.IsParallel() {
-			// Execute parallel group
-			groupName := item.Parallel.Name
-			if groupName == "" {
-				groupName = fmt.Sprintf("Parallel Group %d", i+1)
-			}
-			l.Infof("[%d/%d] Starting %s (%d steps)...", i+1, len(cfg.Workflow), groupName, len(item.Parallel.Steps))
-
-			results, err := runParallelGroup(ctx, cfg, item.Parallel.Steps, l)
-			if err != nil {
-				return fmt.Errorf("parallel group %q failed: %w", groupName, err)
-			}
-
-			// Log all results
-			for _, r := range results {
-				if r.Error != nil {
-					log.Printf("  ✗ %s: FAILED - %v", r.StepName, r.Error)
-				} else {
-					log.Printf("  ✓ %s: %s", r.StepName, r.Result)
-				}
-			}
-
-			log.Printf("[%d/%d] %s completed successfully.", i+1, len(cfg.Workflow), groupName)
-		} else {
-			// Execute single step
-			step := item.AsStep()
-			l.Infof("[Step %d/%d] Starting step %q on instance %q...", i+1, len(cfg.Workflow), step.Name, step.Instance)
-
-			result, err := runStep(ctx, cfg, step, l, nil, i, 0)
-			if err != nil {
-				return fmt.Errorf("step %q failed: %w", step.Name, err)
-			}
-
-			l.Infof("  -> Build finished with result: %s", result)
-			if result != "SUCCESS" {
-				return fmt.Errorf("step %q failed with result: %s", step.Name, result)
-			}
-
-			l.Infof("[Step %d/%d] Completed successfully.", i+1, len(cfg.Workflow))
-		}
+// IsDisabled returns true if the given step is in the disabled set.
+func (d DisabledSet) IsDisabled(itemIndex, stepIndex int) bool {
+	if steps, ok := d[itemIndex]; ok {
+		return steps[stepIndex]
 	}
-
-	duration := time.Since(start)
-	log.Printf("Workflow completed successfully in %s.", duration)
-	return nil
+	return false
 }
 
 // WorkflowCallbacks provides hooks into workflow execution for state tracking.
 type WorkflowCallbacks interface {
 	OnStepStart(itemIndex, stepIndex int, name, buildURL string)
 	OnStepComplete(itemIndex, stepIndex int, name, result string, err error)
+	OnStepSkipped(itemIndex, stepIndex int, name string)
 	OnPRWaitStart(itemIndex int, pr *config.PRWait)
 	OnPRWaitProgress(itemIndex int, pr *config.PRWait)
 	OnPRWaitComplete(itemIndex int, pr *config.PRWait)
 	OnPRWaitFailed(itemIndex int, pr *config.PRWait, err error)
+	OnPRWaitSkipped(itemIndex int, pr *config.PRWait)
 }
 
 // RunWithCallbacks executes the workflow with callback notifications.
-func RunWithCallbacks(ctx context.Context, cfg *config.Config, l *logger.Logger, callbacks WorkflowCallbacks, skipPRCheck bool) error {
+func RunWithCallbacks(ctx context.Context, cfg *config.Config, l *logger.Logger, callbacks WorkflowCallbacks, disabledSet DisabledSet) error {
 	l.Infof("Starting workflow execution...")
 	start := time.Now()
 
@@ -112,27 +54,26 @@ func RunWithCallbacks(ctx context.Context, cfg *config.Config, l *logger.Logger,
 			// Execute PR wait
 			pr := item.WaitForPR
 			target := describePRTarget(pr)
+
+			if disabledSet.IsDisabled(i, 0) {
+				l.Infof("[%d/%d] Skipping PR wait %s (disabled by user).", i+1, len(cfg.Workflow), target)
+				if callbacks != nil {
+					callbacks.OnPRWaitSkipped(i, pr)
+				}
+				continue
+			}
+
 			l.Infof("[%d/%d] Waiting for %s (%s/%s) to be %s...",
 				i+1, len(cfg.Workflow), target, pr.Owner, pr.Repo, pr.WaitFor)
 
-			if skipPRCheck {
-				l.Infof("Skipping PR check as requested by user.")
+			if err := runPRWait(ctx, cfg, pr, l, callbacks, i); err != nil {
 				if callbacks != nil {
-					// We might want to indicate it was skipped or just mark complete?
-					// Let's just mark complete immediately.
-					callbacks.OnPRWaitStart(i, pr)
-					callbacks.OnPRWaitComplete(i, pr)
+					callbacks.OnPRWaitFailed(i, pr, err)
 				}
-			} else {
-				if err := runPRWait(ctx, cfg, pr, l, callbacks, i); err != nil {
-					if callbacks != nil {
-						callbacks.OnPRWaitFailed(i, pr, err)
-					}
-					return fmt.Errorf("PR wait %q failed: %w", pr.Name, err)
-				}
-				if callbacks != nil {
-					callbacks.OnPRWaitComplete(i, pr)
-				}
+				return fmt.Errorf("PR wait %q failed: %w", pr.Name, err)
+			}
+			if callbacks != nil {
+				callbacks.OnPRWaitComplete(i, pr)
 			}
 
 			resolved := describeResolvedPR(pr)
@@ -146,7 +87,7 @@ func RunWithCallbacks(ctx context.Context, cfg *config.Config, l *logger.Logger,
 			}
 			l.Infof("[%d/%d] Starting %s (%d steps)...", i+1, len(cfg.Workflow), groupName, len(item.Parallel.Steps))
 
-			results, err := runParallelGroupWithCallbacks(ctx, cfg, item.Parallel.Steps, i, l, callbacks)
+			results, err := runParallelGroupWithCallbacks(ctx, cfg, item.Parallel.Steps, i, l, callbacks, disabledSet)
 			if err != nil {
 				return fmt.Errorf("parallel group %q failed: %w", groupName, err)
 			}
@@ -164,6 +105,15 @@ func RunWithCallbacks(ctx context.Context, cfg *config.Config, l *logger.Logger,
 		} else {
 			// Execute single step
 			step := item.AsStep()
+
+			if disabledSet.IsDisabled(i, 0) {
+				l.Infof("[Step %d/%d] Skipping step %q (disabled by user).", i+1, len(cfg.Workflow), step.Name)
+				if callbacks != nil {
+					callbacks.OnStepSkipped(i, 0, step.Name)
+				}
+				continue
+			}
+
 			l.Infof("[Step %d/%d] Starting step %q on instance %q...", i+1, len(cfg.Workflow), step.Name, step.Instance)
 
 			if callbacks != nil {
@@ -375,7 +325,7 @@ func runParallelGroup(ctx context.Context, cfg *config.Config, steps []config.St
 }
 
 // runParallelGroupWithCallbacks executes multiple steps in parallel with callback notifications.
-func runParallelGroupWithCallbacks(ctx context.Context, cfg *config.Config, steps []config.Step, itemIndex int, l *logger.Logger, callbacks WorkflowCallbacks) ([]StepResult, error) {
+func runParallelGroupWithCallbacks(ctx context.Context, cfg *config.Config, steps []config.Step, itemIndex int, l *logger.Logger, callbacks WorkflowCallbacks, disabledSet DisabledSet) ([]StepResult, error) {
 	results := make([]StepResult, len(steps))
 	var resultsMu sync.Mutex
 
@@ -384,6 +334,17 @@ func runParallelGroupWithCallbacks(ctx context.Context, cfg *config.Config, step
 	for i, step := range steps {
 		i, step := i, step // capture loop variables
 		g.Go(func() error {
+			if disabledSet.IsDisabled(itemIndex, i) {
+				l.Infof("  -> Skipping step %q (disabled by user).", step.Name)
+				if callbacks != nil {
+					callbacks.OnStepSkipped(itemIndex, i, step.Name)
+				}
+				resultsMu.Lock()
+				results[i] = StepResult{StepName: step.Name, Result: "SKIPPED"}
+				resultsMu.Unlock()
+				return nil
+			}
+
 			if callbacks != nil {
 				callbacks.OnStepStart(itemIndex, i, step.Name, "")
 			}

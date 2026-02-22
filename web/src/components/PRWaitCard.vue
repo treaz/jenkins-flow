@@ -1,8 +1,12 @@
 <template>
-  <div class="pr-card">
+  <div class="pr-card" :class="{ 'pr-card--disabled': !enabled }">
     <div class="pr-header">
       <div class="pr-info">
-        <h3 class="pr-name">{{ name }}</h3>
+        <label v-if="showToggle" class="step-toggle">
+          <input type="checkbox" :checked="enabled" @change="$emit('toggle')" />
+          <h3 class="pr-name">{{ name }}</h3>
+        </label>
+        <h3 v-else class="pr-name">{{ name }}</h3>
         <div class="pr-meta">
           <span class="repo" v-if="repoPath">{{ repoPath }}</span>
           <span class="identifier" v-if="identifier">
@@ -48,8 +52,12 @@ const props = defineProps({
   prTitle: { type: String, default: '' },
   error: { type: String, default: '' },
   startedAt: String,
-  endedAt: String
+  endedAt: String,
+  showToggle: { type: Boolean, default: false },
+  enabled: { type: Boolean, default: true }
 })
+
+defineEmits(['toggle'])
 
 const repoPath = computed(() => {
   if (!props.owner && !props.repo) return ''
@@ -94,6 +102,29 @@ const duration = computed(() => {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   padding: 16px;
+}
+
+.pr-card--disabled {
+  opacity: 0.5;
+}
+
+.step-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  margin-bottom: 4px;
+}
+
+.step-toggle input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.step-toggle .pr-name {
+  margin-bottom: 0;
 }
 
 .pr-header {

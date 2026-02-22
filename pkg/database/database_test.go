@@ -45,7 +45,7 @@ func TestCreateRun(t *testing.T) {
 		"version": "1.2.3",
 	}
 
-	runID, err := db.CreateRun("Test Workflow", "workflows/test.yaml", "name: Test Workflow\nworkflow: []", inputs, false)
+	runID, err := db.CreateRun("Test Workflow", "workflows/test.yaml", "name: Test Workflow\nworkflow: []", inputs)
 	if err != nil {
 		t.Fatalf("CreateRun failed: %v", err)
 	}
@@ -84,7 +84,7 @@ func TestUpdateRunComplete(t *testing.T) {
 	defer db.Close()
 
 	inputs := map[string]string{"key": "value"}
-	runID, err := db.CreateRun("Test Workflow", "workflows/test.yaml", "config", inputs, false)
+	runID, err := db.CreateRun("Test Workflow", "workflows/test.yaml", "config", inputs)
 	if err != nil {
 		t.Fatalf("CreateRun failed: %v", err)
 	}
@@ -124,7 +124,7 @@ func TestGetRuns(t *testing.T) {
 	// Create multiple runs
 	inputs := map[string]string{"key": "value"}
 	for i := 0; i < 5; i++ {
-		_, err := db.CreateRun("Test Workflow", "workflows/test.yaml", "config", inputs, false)
+		_, err := db.CreateRun("Test Workflow", "workflows/test.yaml", "config", inputs)
 		if err != nil {
 			t.Fatalf("CreateRun failed: %v", err)
 		}

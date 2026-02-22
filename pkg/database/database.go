@@ -23,7 +23,6 @@ type WorkflowRun struct {
 	InputsJSON     string            `json:"inputs_json"`
 	Inputs         map[string]string `json:"inputs,omitempty"`
 	ConfigSnapshot string            `json:"config_snapshot"`
-	SkipPRCheck    bool              `json:"skip_pr_check"`
 }
 
 // DB wraps the SQLite database connection.
@@ -70,7 +69,7 @@ func NewDB(dbPath string) (*DB, error) {
 }
 
 // CreateRun creates a new workflow run record with status "running".
-func (db *DB) CreateRun(workflowName, workflowPath, configSnapshot string, inputs map[string]string, skipPRCheck bool) (int64, error) {
+func (db *DB) CreateRun(workflowName, workflowPath, configSnapshot string, inputs map[string]string) (int64, error) {
 	if db.conn == nil {
 		return 0, fmt.Errorf("database connection is nil")
 	}
@@ -82,11 +81,11 @@ func (db *DB) CreateRun(workflowName, workflowPath, configSnapshot string, input
 	}
 
 	query := `
-		INSERT INTO workflow_runs (workflow_name, workflow_path, start_time, status, inputs_json, config_snapshot, skip_pr_check)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO workflow_runs (workflow_name, workflow_path, start_time, status, inputs_json, config_snapshot)
+		VALUES (?, ?, ?, ?, ?, ?)
 	`
 
-	result, err := db.conn.Exec(query, workflowName, workflowPath, time.Now().UTC(), "running", string(inputsJSON), configSnapshot, skipPRCheck)
+	result, err := db.conn.Exec(query, workflowName, workflowPath, time.Now().UTC(), "running", string(inputsJSON), configSnapshot)
 	if err != nil {
 		return 0, fmt.Errorf("failed to insert workflow run: %w", err)
 	}
@@ -135,7 +134,7 @@ func (db *DB) GetRuns(limit, offset int, workflowPath, status string) ([]Workflo
 	}
 
 	query := `
-		SELECT id, workflow_name, workflow_path, start_time, end_time, status, inputs_json, config_snapshot, skip_pr_check
+		SELECT id, workflow_name, workflow_path, start_time, end_time, status, inputs_json, config_snapshot
 		FROM workflow_runs
 		WHERE 1=1
 	`
@@ -165,7 +164,7 @@ func (db *DB) GetRuns(limit, offset int, workflowPath, status string) ([]Workflo
 		var run WorkflowRun
 		var endTime sql.NullTime
 
-		err := rows.Scan(&run.ID, &run.WorkflowName, &run.WorkflowPath, &run.StartTime, &endTime, &run.Status, &run.InputsJSON, &run.ConfigSnapshot, &run.SkipPRCheck)
+		err := rows.Scan(&run.ID, &run.WorkflowName, &run.WorkflowPath, &run.StartTime, &endTime, &run.Status, &run.InputsJSON, &run.ConfigSnapshot)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan workflow run: %w", err)
 		}
@@ -200,7 +199,7 @@ func (db *DB) GetRun(runID int64) (*WorkflowRun, error) {
 	}
 
 	query := `
-		SELECT id, workflow_name, workflow_path, start_time, end_time, status, inputs_json, config_snapshot, skip_pr_check
+		SELECT id, workflow_name, workflow_path, start_time, end_time, status, inputs_json, config_snapshot
 		FROM workflow_runs
 		WHERE id = ?
 	`
@@ -208,7 +207,7 @@ func (db *DB) GetRun(runID int64) (*WorkflowRun, error) {
 	var run WorkflowRun
 	var endTime sql.NullTime
 
-	err := db.conn.QueryRow(query, runID).Scan(&run.ID, &run.WorkflowName, &run.WorkflowPath, &run.StartTime, &endTime, &run.Status, &run.InputsJSON, &run.ConfigSnapshot, &run.SkipPRCheck)
+	err := db.conn.QueryRow(query, runID).Scan(&run.ID, &run.WorkflowName, &run.WorkflowPath, &run.StartTime, &endTime, &run.Status, &run.InputsJSON, &run.ConfigSnapshot)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("workflow run with id %d not found", runID)
 	}
