@@ -97,22 +97,50 @@ If you omit `slack_webhook`, Jenkins Flow logs a warning and skips Slack deliver
 1. **Start the Server**:
 
 ```bash
-# Using Makefile
 make serve
-
-# Or directly
-./jenkins-flow -port 32567
 ```
 
-1. **Open the Dashboard**:
-
-Open your browser to `http://localhost:32567`.
+This builds the frontend, compiles the binary, and starts the server. The dashboard is available at `http://localhost:32567`.
 
 From the dashboard you can:
 
 - See all available workflows in the `workflows/` and `examples/` directories.
 - Trigger workflows.
 - View real-time logs and step status.
+
+1. **Mock Jenkins Server** (optional, for local testing):
+
+```bash
+make mock-jenkins
+```
+
+Starts a local Jenkins mock on port `9090` that simulates the Jenkins REST API — no real Jenkins instance required. Useful for running the example workflows in `examples/smoke_test.yaml`.
+
+To customise its behaviour, run it directly with flags:
+
+```bash
+go run ./cmd/mock-jenkins -port 9090 -queue-delay 1s -build-duration 3s -result SUCCESS
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `-port` | `9090` | Port to listen on |
+| `-queue-delay` | `2s` | How long a job waits in queue before starting |
+| `-build-duration` | `5s` | How long each build runs |
+| `-result` | `SUCCESS` | Build result: `SUCCESS`, `FAILURE`, or `UNSTABLE` |
+
+Configure `instances.yaml` to point at the mock:
+
+```yaml
+instances:
+  mock:
+    url: http://localhost:9090
+    token: "ignored:token"
+```
+
+1. **Open the Dashboard**:
+
+Open your browser to `http://localhost:32567`.
 
 ### Parallel Execution
 
