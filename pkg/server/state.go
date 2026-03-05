@@ -18,15 +18,16 @@ const (
 
 // StepState holds the state of a single step.
 type StepState struct {
-	Name      string     `json:"name"`
-	Instance  string     `json:"instance"`
-	Job       string     `json:"job"`
-	Status    StepStatus `json:"status"`
-	Result    string     `json:"result,omitempty"`
-	Error     string     `json:"error,omitempty"`
-	StartedAt *time.Time `json:"startedAt,omitempty"`
-	EndedAt   *time.Time `json:"endedAt,omitempty"`
-	BuildURL  string     `json:"buildUrl,omitempty"`
+	Name       string            `json:"name"`
+	Instance   string            `json:"instance"`
+	Job        string            `json:"job"`
+	Status     StepStatus        `json:"status"`
+	Result     string            `json:"result,omitempty"`
+	Error      string            `json:"error,omitempty"`
+	StartedAt  *time.Time        `json:"startedAt,omitempty"`
+	EndedAt    *time.Time        `json:"endedAt,omitempty"`
+	BuildURL   string            `json:"buildUrl,omitempty"`
+	UsedInputs map[string]string `json:"usedInputs,omitempty"`
 }
 
 // PRWaitState holds the state of a PR wait item.

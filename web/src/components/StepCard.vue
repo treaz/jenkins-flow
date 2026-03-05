@@ -15,6 +15,11 @@
           <span class="instance" v-if="instance">{{ instance }}</span>
           <span class="job" v-if="job">{{ job }}</span>
         </div>
+        <div v-if="hasUsedInputs && !isParallel" class="used-inputs">
+          <span v-for="(val, key) in usedInputs" :key="key" class="used-input-tag">
+            {{ key }} = {{ val }}
+          </span>
+        </div>
       </div>
       <component
         :is="statusLinkTag"
@@ -50,6 +55,7 @@
         :error="step.error"
         :started-at="step.startedAt"
         :ended-at="step.endedAt"
+        :used-inputs="step.usedInputs"
         :show-toggle="showToggle"
         :enabled="!disabledSubSteps?.has(index)"
         @toggle="$emit('toggle-sub-step', index)"
@@ -73,10 +79,13 @@ const props = defineProps({
   endedAt: String,
   isParallel: Boolean,
   steps: Array,
+  usedInputs: { type: Object, default: null },
   enabled: { type: Boolean, default: true },
   showToggle: { type: Boolean, default: false },
   disabledSubSteps: { type: Set, default: () => new Set() }
 })
+
+const hasUsedInputs = computed(() => props.usedInputs && Object.keys(props.usedInputs).length > 0)
 
 defineEmits(['toggle', 'toggle-sub-step'])
 
@@ -168,6 +177,23 @@ const statusLinkProps = computed(() => {
 .step-meta .job::before {
   content: '📋 ';
   opacity: 0.6;
+}
+
+.used-inputs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.used-input-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  font-size: 11px;
+  font-family: monospace;
+  color: var(--text-secondary);
 }
 
 .build-link {
