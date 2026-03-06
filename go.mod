@@ -4,7 +4,7 @@ go 1.25.4
 
 require (
 	github.com/getkin/kin-openapi v0.133.0
-	github.com/go-chi/chi/v5 v5.2.3
+	github.com/go-chi/chi/v5 v5.2.5
 	github.com/golang-migrate/migrate/v4 v4.19.1
 	github.com/mattn/go-sqlite3 v1.14.34
 	github.com/oapi-codegen/runtime v1.2.0
