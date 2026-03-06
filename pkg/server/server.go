@@ -245,13 +245,16 @@ func (s *Server) GetWorkflowDefinition(w http.ResponseWriter, r *http.Request, n
 
 	s.applyInputSubstitutions(cfg)
 
+	// Filter out inputs that are only used by PR wait steps
+	filteredInputs := filterPRWaitOnlyInputs(cfg)
+
 	// Helper to convert config items to initial internal state, then to API state
 	internalItems := s.configToStateItems(cfg)
 	// We need to construct a "dummy" pending state to convert to API response
 	dummyState := &WorkflowState{
 		Name:      workflowPath,
 		Status:    StatusPending,
-		Inputs:    cfg.Inputs,
+		Inputs:    filteredInputs,
 		Items:     internalItems,
 		StartedAt: nil,
 	}
@@ -334,6 +337,48 @@ func (s *Server) RunWorkflow(w http.ResponseWriter, r *http.Request) {
 
 	s.applyInputSubstitutions(cfg)
 
+	// Apply PR wait overrides from the request
+	if req.PrWaitOverrides != nil {
+		for _, ov := range *req.PrWaitOverrides {
+			if ov.ItemIndex == nil {
+				continue
+			}
+			idx := *ov.ItemIndex
+			if idx < 0 || idx >= len(cfg.Workflow) {
+				continue
+			}
+			item := &cfg.Workflow[idx]
+			if !item.IsPRWait() || item.WaitForPR == nil {
+				continue
+			}
+			pr := item.WaitForPR
+			if ov.Owner != nil {
+				pr.Owner = *ov.Owner
+			}
+			if ov.Repo != nil {
+				pr.Repo = *ov.Repo
+			}
+			if ov.PrNumber != nil {
+				pr.PRNumber = *ov.PrNumber
+				if *ov.PrNumber > 0 {
+					pr.HeadBranch = "" // pr_number and head_branch are mutually exclusive
+				}
+			}
+			if ov.HeadBranch != nil {
+				pr.HeadBranch = *ov.HeadBranch
+				if *ov.HeadBranch != "" {
+					pr.PRNumber = 0 // mutually exclusive
+				}
+			}
+			if ov.WaitFor != nil {
+				pr.WaitFor = *ov.WaitFor
+			}
+			if ov.PollSecs != nil {
+				pr.PollSecs = *ov.PollSecs
+			}
+		}
+	}
+
 	// Initialize state from config
 	items := s.configToStateItems(cfg)
 	s.state.StartWorkflow(workflowPath, cfg.Inputs, items)
@@ -348,10 +393,15 @@ func (s *Server) RunWorkflow(w http.ResponseWriter, r *http.Request) {
 	disabledSet := workflow.DisabledSet{}
 	if req.DisabledSteps != nil {
 		for _, ds := range *req.DisabledSteps {
-			if disabledSet[ds.ItemIndex] == nil {
-				disabledSet[ds.ItemIndex] = make(map[int]bool)
+			if ds.ItemIndex == nil || ds.StepIndex == nil {
+				continue
 			}
-			disabledSet[ds.ItemIndex][ds.StepIndex] = true
+			itemIdx := *ds.ItemIndex
+			stepIdx := *ds.StepIndex
+			if disabledSet[itemIdx] == nil {
+				disabledSet[itemIdx] = make(map[int]bool)
+			}
+			disabledSet[itemIdx][stepIdx] = true
 		}
 	}
 
@@ -466,6 +516,26 @@ func (s *Server) SetLogLevel(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(api.LogLevelRequest{Level: &levelStr})
 }
 
+// resolveUsedInputs scans param values for ${var} references and returns a map
+// of input key -> resolved value for inputs that are actually referenced.
+func resolveUsedInputs(params map[string]string, inputs map[string]string) map[string]string {
+	if len(params) == 0 || len(inputs) == 0 {
+		return nil
+	}
+	used := map[string]string{}
+	for _, v := range params {
+		for _, varName := range config.FindTemplateVars(v) {
+			if val, ok := inputs[varName]; ok {
+				used[varName] = val
+			}
+		}
+	}
+	if len(used) == 0 {
+		return nil
+	}
+	return used
+}
+
 // configToStateItems converts config workflow items to state items.
 func (s *Server) configToStateItems(cfg *config.Config) []WorkflowItemState {
 	items := make([]WorkflowItemState, len(cfg.Workflow))
@@ -475,10 +545,11 @@ func (s *Server) configToStateItems(cfg *config.Config) []WorkflowItemState {
 			steps := make([]StepState, len(item.Parallel.Steps))
 			for j, step := range item.Parallel.Steps {
 				steps[j] = StepState{
-					Name:     step.Name,
-					Instance: step.Instance,
-					Job:      step.Job,
-					Status:   StatusPending,
+					Name:       step.Name,
+					Instance:   step.Instance,
+					Job:        step.Job,
+					Status:     StatusPending,
+					UsedInputs: resolveUsedInputs(step.Params, cfg.Inputs),
 				}
 			}
 			items[i] = WorkflowItemState{
@@ -517,16 +588,53 @@ func (s *Server) configToStateItems(cfg *config.Config) []WorkflowItemState {
 				IsParallel: false,
 				IsPRWait:   false,
 				Step: &StepState{
-					Name:     step.Name,
-					Instance: step.Instance,
-					Job:      step.Job,
-					Status:   StatusPending,
+					Name:       step.Name,
+					Instance:   step.Instance,
+					Job:        step.Job,
+					Status:     StatusPending,
+					UsedInputs: resolveUsedInputs(step.Params, cfg.Inputs),
 				},
 			}
 		}
 	}
 
 	return items
+}
+
+// filterPRWaitOnlyInputs returns a copy of cfg.Inputs excluding inputs that are
+// only referenced by PR wait steps (those are editable on the PR wait card instead).
+func filterPRWaitOnlyInputs(cfg *config.Config) map[string]string {
+	if len(cfg.Inputs) == 0 {
+		return cfg.Inputs
+	}
+
+	// Collect all input vars used by non-PR-wait steps
+	usedBySteps := map[string]bool{}
+	for _, item := range cfg.Workflow {
+		if item.IsParallel() {
+			for _, step := range item.Parallel.Steps {
+				for _, v := range step.Params {
+					for _, varName := range config.FindTemplateVars(v) {
+						usedBySteps[varName] = true
+					}
+				}
+			}
+		} else if !item.IsPRWait() {
+			for _, v := range item.Params {
+				for _, varName := range config.FindTemplateVars(v) {
+					usedBySteps[varName] = true
+				}
+			}
+		}
+	}
+
+	filtered := make(map[string]string, len(cfg.Inputs))
+	for k, v := range cfg.Inputs {
+		if usedBySteps[k] {
+			filtered[k] = v
+		}
+	}
+	return filtered
 }
 
 func (s *Server) applyInputSubstitutions(cfg *config.Config) {
@@ -689,7 +797,7 @@ func (s *Server) internalItemToAPI(item WorkflowItemState) api.WorkflowItemState
 
 func (s *Server) internalStepToAPI(step *StepState) *api.StepState {
 	st := string(step.Status)
-	return &api.StepState{
+	result := &api.StepState{
 		Name:     strPtr(step.Name),
 		Instance: strPtr(step.Instance),
 		Job:      strPtr(step.Job),
@@ -698,6 +806,14 @@ func (s *Server) internalStepToAPI(step *StepState) *api.StepState {
 		Error:    strPtr(step.Error),
 		BuildUrl: strPtr(step.BuildURL),
 	}
+	if len(step.UsedInputs) > 0 {
+		m := make(map[string]string, len(step.UsedInputs))
+		for k, v := range step.UsedInputs {
+			m[k] = v
+		}
+		result.UsedInputs = &m
+	}
+	return result
 }
 
 func (s *Server) internalParallelToAPI(p *ParallelGroupState) *api.ParallelGroupState {

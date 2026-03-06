@@ -3,9 +3,12 @@ package config
 import (
 	"fmt"
 	"os"
+	"regexp"
 
 	"gopkg.in/yaml.v3"
 )
+
+var templateVarRe = regexp.MustCompile(`\$\{(\w+)\}`)
 
 type Instance struct {
 	URL     string `yaml:"url"`
@@ -103,6 +106,16 @@ type Config struct {
 	GitHub       *GitHubConfig       `yaml:"github,omitempty"` // Global GitHub config
 	Inputs       map[string]string   `yaml:"inputs,omitempty"`
 	Workflow     []WorkflowItem      `yaml:"workflow"`
+}
+
+// FindTemplateVars extracts variable names from ${var} placeholders in text.
+func FindTemplateVars(text string) []string {
+	matches := templateVarRe.FindAllStringSubmatch(text, -1)
+	vars := make([]string, 0, len(matches))
+	for _, m := range matches {
+		vars = append(vars, m[1])
+	}
+	return vars
 }
 
 // Substitute replaces ${var} placeholders in text with values from vars.

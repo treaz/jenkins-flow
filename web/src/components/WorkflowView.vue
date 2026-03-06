@@ -76,7 +76,10 @@
           :ended-at="item.prWait?.endedAt"
           :show-toggle="!isRunning"
           :enabled="!isDisabled(index, 0)"
+          :editable="!isRunning"
+          :item-index="index"
           @toggle="toggleStep(index, 0)"
+          @update:pr-wait="handlePRWaitUpdate"
         />
         <StepCard
           v-else
@@ -88,6 +91,7 @@
           :error="item.step?.error"
           :started-at="item.step?.startedAt"
           :ended-at="item.step?.endedAt"
+          :used-inputs="item.step?.usedInputs"
           :show-toggle="!isRunning"
           :enabled="!isDisabled(index, 0)"
           @toggle="toggleStep(index, 0)"
@@ -120,11 +124,14 @@ const emit = defineEmits(['run', 'stop'])
 // Set of disabled step keys like "itemIndex:stepIndex"
 const disabledSteps = ref(new Set())
 const localInputs = ref({})
+// PR wait overrides keyed by itemIndex
+const prWaitOverrides = ref({})
 
 // Reset state when a different workflow is selected
 watch(() => props.workflow?.name, () => {
   disabledSteps.value = new Set()
   localInputs.value = { ...(props.workflow?.inputs || {}) }
+  prWaitOverrides.value = {}
 }, { immediate: true })
 
 const isDisabled = (itemIndex, stepIndex) => {
@@ -153,13 +160,25 @@ const getDisabledForItem = (itemIndex) => {
   return result
 }
 
+const handlePRWaitUpdate = (data) => {
+  prWaitOverrides.value = {
+    ...prWaitOverrides.value,
+    [data.itemIndex]: data
+  }
+}
+
 const emitRun = () => {
   const disabledList = []
   for (const key of disabledSteps.value) {
     const [iStr, sStr] = key.split(':')
     disabledList.push({ itemIndex: parseInt(iStr), stepIndex: parseInt(sStr) })
   }
-  emit('run', { disabledSteps: disabledList, inputs: { ...localInputs.value } })
+  const overrides = Object.values(prWaitOverrides.value)
+  emit('run', {
+    disabledSteps: disabledList,
+    inputs: { ...localInputs.value },
+    prWaitOverrides: overrides
+  })
 }
 
 const formatTime = (isoString) => {

@@ -156,10 +156,10 @@ const selectWorkflow = (path) => {
   loadWorkflowDefinition(path)
 }
 
-const handleRun = async ({ disabledSteps = [], inputs = {} } = {}) => {
+const handleRun = async ({ disabledSteps = [], inputs = {}, prWaitOverrides = [] } = {}) => {
   isStartingRun.value = true
   try {
-    await runWorkflow(selectedWorkflow.value, { inputs, disabledSteps })
+    await runWorkflow(selectedWorkflow.value, { inputs, disabledSteps, prWaitOverrides })
     toast.value.add({
       title: 'Workflow Started',
       message: `Successfully started ${getWorkflowName(selectedWorkflow.value)}`,

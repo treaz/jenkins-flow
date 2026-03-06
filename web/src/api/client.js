@@ -43,11 +43,15 @@ export async function fetchWorkflowDefinition(workflowPath) {
  * @param {Array} options.disabledSteps - Steps to skip
  * @returns {Promise<{status: string}>}
  */
-export async function runWorkflow(workflowPath, { inputs = {}, disabledSteps = [] } = {}) {
+export async function runWorkflow(workflowPath, { inputs = {}, disabledSteps = [], prWaitOverrides = [] } = {}) {
+    const body = { workflow: workflowPath, inputs, disabledSteps };
+    if (prWaitOverrides.length > 0) {
+        body.prWaitOverrides = prWaitOverrides;
+    }
     const res = await fetch(`${API_BASE}/api/run`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workflow: workflowPath, inputs, disabledSteps })
+        body: JSON.stringify(body)
     });
     if (!res.ok) {
         const text = await res.text();

@@ -254,6 +254,28 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/DisabledStep'
+        prWaitOverrides:
+          type: array
+          items:
+            $ref: '#/components/schemas/PRWaitOverride'
+
+    PRWaitOverride:
+      type: object
+      properties:
+        itemIndex:
+          type: integer
+        owner:
+          type: string
+        repo:
+          type: string
+        prNumber:
+          type: integer
+        headBranch:
+          type: string
+        waitFor:
+          type: string
+        pollSecs:
+          type: integer
 
     DisabledStep:
       type: object
@@ -316,6 +338,11 @@ components:
           type: string
         buildUrl:
           type: string
+        usedInputs:
+          type: object
+          additionalProperties:
+            type: string
+          description: Workflow inputs referenced by this step's params (key -> resolved value)
     
     ParallelGroupState:
       type: object
