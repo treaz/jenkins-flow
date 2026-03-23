@@ -1,9 +1,11 @@
-# Jenkins Flow CLI
+# Jenkins Flow
 
-A robust Go CLI tools to orchestrate Jenkins jobs linearly across multiple instances from your local machine.
+A robust tool to orchestrate Jenkins jobs across multiple instances. Available as a **native macOS application** or a **CLI web server**.
 
 ## Features
 
+- **Native macOS App**: Runs as a `.app` bundle with a native window, dock icon, and system WebKit — no browser required.
+- **CLI Mode**: Also runs as a standalone web server accessible via browser.
 - **Multi-Instance Support**: Orchestrate jobs across different Jenkins servers.
 - **Sequential & Parallel Workflows**: Run steps in sequence or parallel (e.g., deploy to multiple regions simultaneously).
 - **Robust Polling**: Waits for Queue items to start and Builds to finish.
@@ -49,14 +51,27 @@ Jenkins API tokens are persistent and do not expire unless manually revoked. To 
 
 ### Build
 
+**macOS App** (recommended):
+
 ```bash
 git clone https://github.com/treaz/jenkins-flow.git
 cd jenkins-flow
+make deps         # Download dependencies
+make wails-build  # Build the macOS .app bundle
+```
+
+The `.app` bundle is output to `build/bin/Jenkins Flow.app`. You can double-click it or drag it to `/Applications`.
+
+**CLI Mode** (web server):
+
+```bash
 make deps   # Download dependencies
-make build  # Build the binary
+make build  # Build the CLI binary
 ```
 
 > **Tip**: Run `make help` to see all available commands (build, test, run, clean, lint, etc.).
+
+> **Note**: Building the macOS app requires the [Wails CLI](https://wails.io/docs/gettingstarted/installation): `go install github.com/wailsapp/wails/v2/cmd/wails@latest`
 
 ## Usage
 
@@ -94,7 +109,23 @@ workflow:
 
 If you omit `slack_webhook`, Jenkins Flow logs a warning and skips Slack delivery (macOS notifications still fire).
 
-1. **Start the Server**:
+1. **Run the App**:
+
+**macOS App**:
+
+Double-click `build/bin/Jenkins Flow.app`, or from the command line:
+
+```bash
+open "build/bin/Jenkins Flow.app"
+```
+
+When running as a `.app` bundle, configuration files are read from `~/.config/jenkins-flow/`:
+- `~/.config/jenkins-flow/instances.yaml` — Jenkins instance configuration
+- `~/.config/jenkins-flow/workflows/` — Workflow definitions
+
+You can set `JENKINS_FLOW_WORKFLOWS` to a comma-separated list of additional workflow directories.
+
+**CLI Mode** (web server):
 
 ```bash
 make serve
@@ -231,19 +262,15 @@ Any changes you make in the UI are **saved back to the `workflow.yaml` file**. T
 
 ## Notifications
 
-The CLI uses [`terminal-notifier`](https://github.com/julienXX/terminal-notifier) to display macOS desktop notifications when workflows complete (both success and failure).
+Jenkins Flow displays macOS desktop notifications when workflows complete (both success and failure).
 
-Install it with Homebrew if it is not already available on your machine:
+In **CLI mode**, notifications are sent via [`terminal-notifier`](https://github.com/julienXX/terminal-notifier). Install it with Homebrew:
 
 ```bash
 brew install terminal-notifier
 ```
 
-You can verify notifications are working with:
-
-```bash
-terminal-notifier -title "Jenkins Flow" -message "Workflow finished"
-```
+> **Note**: `terminal-notifier` is only required for CLI mode. The macOS app uses it as well if available, but notifications will silently skip if it is not installed.
 
 ### Slack Integration (Optional)
 
@@ -339,6 +366,23 @@ The library handles version tracking, dirty state detection, and ensures migrati
 Database operations are designed to be non-blocking. If database writes fail, errors are logged but workflow execution continues normally.
 
 ## Development
+
+### Project Structure
+
+Jenkins Flow has two entry points sharing the same backend packages:
+
+| Entry Point | Purpose | Build Command |
+|---|---|---|
+| `main.go` | Native macOS app (Wails v2 + WebKit) | `make wails-build` |
+| `cmd/jenkins-flow/main.go` | CLI web server | `make build` |
+
+Both entry points use the same Go packages (`pkg/server/`, `pkg/workflow/`, etc.) and the same Vue.js frontend (`web/`). The macOS app embeds the frontend in a native WebKit window via Wails, while the CLI serves it over HTTP.
+
+For macOS app development with hot reload:
+
+```bash
+make wails-dev
+```
 
 ### API First Development
 

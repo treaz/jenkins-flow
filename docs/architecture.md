@@ -2,14 +2,19 @@
 
 ## Overview
 
-Jenkins Flow is a CLI tool with an embedded web server that orchestrates Jenkins jobs across multiple instances. It provides a Vue 3 web dashboard for managing workflows, supporting sequential and parallel job execution, PR waiting, and Slack notifications.
+Jenkins Flow orchestrates Jenkins jobs across multiple instances. It provides a Vue 3 web dashboard for managing workflows, supporting sequential and parallel job execution, PR waiting, and Slack notifications.
 
-The Go binary embeds the frontend static assets, producing a single deployable artifact.
+The application runs in two modes from the same codebase:
+- **macOS App** — Native `.app` bundle using [Wails v2](https://wails.io/), which renders the Vue frontend in a system WebKit window. No browser required.
+- **CLI Mode** — Standalone HTTP server serving the same Vue frontend to a browser.
+
+Both modes share all backend packages and the same embedded frontend assets.
 
 ## Key Components
 
-- **cmd/jenkins-flow/** — Application entry point; parses flags and starts the server
-- **pkg/server/** — HTTP server (Chi router) implementing the OpenAPI-generated interface; serves the Vue SPA and REST API; manages in-memory execution state (`state.go`)
+- **main.go** — Wails v2 entry point for the macOS app; creates a native window with the Vue frontend rendered in WebKit, API requests handled via the `AssetServer.Handler`
+- **cmd/jenkins-flow/** — CLI entry point; parses flags and starts a standalone HTTP server
+- **pkg/server/** — HTTP server (Chi router) implementing the OpenAPI-generated interface; serves the Vue SPA and REST API; manages in-memory execution state (`state.go`); exposes `BuildRouter()` for both entry points and `StartAsync()` for non-blocking startup
 - **pkg/api/** — Auto-generated OpenAPI server stubs (`server.gen.go`) — do not edit directly
 - **pkg/workflow/** — Workflow engine that executes sequential and parallel steps, handles variable substitution, and coordinates job triggers
 - **pkg/config/** — YAML parsing for `instances.yaml` and workflow files
@@ -20,16 +25,28 @@ The Go binary embeds the frontend static assets, producing a single deployable a
 
 ## Data Flow
 
-1. User loads the web dashboard (served as embedded static assets from `pkg/server/static/`)
-2. Frontend calls the REST API to list workflows, start executions, and poll status
-3. Server loads workflow YAML definitions from `workflows/` directory
-4. Workflow engine executes steps: triggers Jenkins jobs via `pkg/jenkins/`, optionally waits for PR merges via `pkg/github/`
-5. Execution state is tracked in-memory in `pkg/server/state.go`
-6. Optional Slack webhook notifications are sent on workflow completion
+1. User opens the app (native macOS window or browser)
+2. Vue frontend is served from embedded static assets (`pkg/server/static/`)
+3. Frontend calls the REST API to list workflows, start executions, and poll status
+4. Server loads workflow YAML definitions from the configured workflow directories
+5. Workflow engine executes steps: triggers Jenkins jobs via `pkg/jenkins/`, optionally waits for PR merges via `pkg/github/`
+6. Execution state is tracked in-memory in `pkg/server/state.go`
+7. Optional Slack webhook notifications are sent on workflow completion
+
+### macOS App Mode
+
+In the macOS app, Wails embeds the frontend via `AssetServer.Assets` (static files) and routes API requests through `AssetServer.Handler` (the Chi router). There is no localhost HTTP server — Wails handles request routing internally via WebKit.
+
+Configuration files are resolved from `~/.config/jenkins-flow/` when running as a `.app` bundle, with fallback to the current directory for development.
+
+### CLI Mode
+
+The CLI starts a standard HTTP server on the configured port (default 32567) and serves the same embedded static assets and API routes.
 
 ## Infrastructure
 
-- **Single binary deployment** — `make build` produces `jenkins-flow` with embedded frontend
+- **macOS app** — `make wails-build` produces `build/bin/Jenkins Flow.app` (~13 MB, uses system WebKit)
+- **CLI binary** — `make build` produces `jenkins-flow` with embedded frontend
 - **OpenAPI code generation** — `make generate-api` regenerates `pkg/api/server.gen.go` from `api/openapi.yaml`
 - **CI** — GitHub Actions with Dependabot for dependency updates
 
@@ -70,6 +87,9 @@ workflow:
 - `workflows/*.yaml` — Workflow definitions
 - `examples/*.yaml` — Example workflow files
 - `api/openapi.yaml` — OpenAPI specification
+- `wails.json` — Wails v2 project configuration (app name, frontend build commands)
+- `build/darwin/Info.plist` — macOS app metadata (bundle ID, minimum OS version)
+- `build/appicon.png` — Application icon for the macOS app bundle
 
 ## Key ADRs
 

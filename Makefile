@@ -4,7 +4,7 @@
 BINARY_NAME=jenkins-flow
 MAIN_PATH=cmd/jenkins-flow/main.go
 
-.PHONY: all build run clean test deps help serve stop-server mock-jenkins
+.PHONY: all build run clean test deps help serve stop-server mock-jenkins wails-dev wails-build
 
 ## build-web: Build the Vue frontend
 build-web:
@@ -39,6 +39,14 @@ stop-server:
 	else \
 		echo "No $(BINARY_NAME) process found."; \
 	fi
+
+## wails-dev: Run the macOS app in development mode with hot reload
+wails-dev:
+	wails dev -compiler "go build -tags dev" -s -appargs "-instances instances.yaml -workflows-dir workflows,examples"
+
+## wails-build: Build the macOS .app bundle
+wails-build: build-web
+	wails build -platform darwin/arm64 -s
 
 ## mock-jenkins: Run a local mock Jenkins server for smoke testing (port 9090)
 mock-jenkins:

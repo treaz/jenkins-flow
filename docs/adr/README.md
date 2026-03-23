@@ -13,3 +13,4 @@ AI agents: read relevant ADRs before modifying architectural patterns.
 
 | ADR | Title | Status |
 |-----|-------|--------|
+| [0001](0001-native-macos-app-with-wails.md) | Native macOS App with Wails v2 | Accepted |

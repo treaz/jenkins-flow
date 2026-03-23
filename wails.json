@@ -1,0 +1,21 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "Jenkins Flow",
+  "outputfilename": "Jenkins Flow",
+  "frontend:dir": "web",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "wailsjsdir": "./web/src",
+  "author": {
+    "name": "treaz"
+  },
+  "info": {
+    "companyName": "treaz",
+    "productName": "Jenkins Flow",
+    "productVersion": "1.0.0",
+    "copyright": "Copyright 2024 treaz",
+    "comments": "Jenkins Workflow Orchestration Tool"
+  }
+}
