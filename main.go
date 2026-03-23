@@ -42,10 +42,10 @@ func main() {
 	app := &App{}
 
 	err = wails.Run(&options.App{
-		Title:    "Jenkins Flow",
-		Width:    1280,
-		Height:   800,
-		MinWidth: 800,
+		Title:     "Jenkins Flow",
+		Width:     1280,
+		Height:    800,
+		MinWidth:  800,
 		MinHeight: 600,
 		AssetServer: &assetserver.Options{
 			Assets:  staticFS,
