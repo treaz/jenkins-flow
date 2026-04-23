@@ -51,6 +51,7 @@ import AppHeader from './components/AppHeader.vue'
 import AppSidebar from './components/AppSidebar.vue'
 import SettingsModal from './components/SettingsModal.vue'
 import { fetchWorkflows, fetchStatus, runWorkflow, stopWorkflow, fetchLogLevel, setLogLevel, fetchWorkflowDefinition } from './api/client'
+import { BrowserOpenURL } from './wailsjs/runtime/runtime'
 
 const workflows = ref([])
 const selectedWorkflow = ref('')
@@ -223,19 +224,39 @@ watch(selectedWorkflow, (path) => {
 })
 
 
+// Wails' webview ignores target="_blank"; route http(s) clicks through BrowserOpenURL when present.
+const handleExternalLinkClick = (event) => {
+  if (event.defaultPrevented) return
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+  if (event.button !== undefined && event.button !== 0) return
+
+  const anchor = event.target?.closest?.('a')
+  if (!anchor) return
+
+  const href = anchor.href
+  if (!href || !/^https?:\/\//i.test(href)) return
+
+  if (typeof window.runtime === 'undefined' || typeof window.runtime.BrowserOpenURL !== 'function') return
+
+  event.preventDefault()
+  BrowserOpenURL(href)
+}
+
 onMounted(() => {
   loadWorkflows()
   updateStatus()
-  
+
   fetchLogLevel().then(data => {
     logLevel.value = data.level
   }).catch(err => console.error('Failed to load log level:', err))
 
   pollTimer.value = setInterval(updateStatus, 5000)
+  document.addEventListener('click', handleExternalLinkClick)
 })
 
 onUnmounted(() => {
   if (pollTimer.value) clearInterval(pollTimer.value)
+  document.removeEventListener('click', handleExternalLinkClick)
 })
 </script>
 

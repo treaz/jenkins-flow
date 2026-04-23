@@ -3,8 +3,10 @@
 
 BINARY_NAME=jenkins-flow
 MAIN_PATH=cmd/jenkins-flow/main.go
+WAILS_VERSION=v2.12.0
+WAILS=$(shell go env GOPATH)/bin/wails
 
-.PHONY: all build run clean test deps help serve stop-server mock-jenkins wails-dev wails-build
+.PHONY: all build run clean test deps help serve stop-server mock-jenkins wails-dev wails-build wails-install
 
 ## build-web: Build the Vue frontend
 build-web:
@@ -40,13 +42,20 @@ stop-server:
 		echo "No $(BINARY_NAME) process found."; \
 	fi
 
+## wails-install: Install the wails CLI if missing
+wails-install:
+	@if [ ! -x "$(WAILS)" ]; then \
+		echo "Installing wails CLI $(WAILS_VERSION)..."; \
+		go install github.com/wailsapp/wails/v2/cmd/wails@$(WAILS_VERSION); \
+	fi
+
 ## wails-dev: Run the macOS app in development mode with hot reload
-wails-dev:
-	wails dev -compiler "go build -tags dev" -s -appargs "-instances instances.yaml -workflows-dir workflows,examples"
+wails-dev: wails-install
+	$(WAILS) dev -compiler "go build -tags dev" -s -appargs "-instances instances.yaml -workflows-dir workflows,examples"
 
 ## wails-build: Build the macOS .app bundle
-wails-build: build-web
-	wails build -platform darwin/arm64 -s
+wails-build: wails-install build-web
+	$(WAILS) build -platform darwin/arm64 -s
 
 ## mock-jenkins: Run a local mock Jenkins server for smoke testing (port 9090)
 mock-jenkins:
