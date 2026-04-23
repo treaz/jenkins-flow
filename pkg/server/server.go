@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -84,8 +85,8 @@ func NewServer(port int, instancesPath string, workflowDirs []string, dbPath str
 	}
 }
 
-// Start starts the HTTP server.
-func (s *Server) Start() error {
+// BuildRouter creates and returns the configured Chi router with all routes.
+func (s *Server) BuildRouter() chi.Router {
 	r := chi.NewRouter()
 
 	// Middleware
@@ -147,9 +148,30 @@ func (s *Server) Start() error {
 		})
 	}
 
+	return r
+}
+
+// Start starts the HTTP server (blocking).
+func (s *Server) Start() error {
+	r := s.BuildRouter()
 	addr := fmt.Sprintf(":%d", s.port)
 	log.Printf("Starting dashboard server on http://localhost%s", addr)
 	return http.ListenAndServe(addr, r)
+}
+
+// StartAsync starts the HTTP server in a goroutine and returns the actual port
+// and a shutdown function. Use port 0 to let the OS pick an available port.
+func (s *Server) StartAsync() (int, func(context.Context) error, error) {
+	r := s.BuildRouter()
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", s.port))
+	if err != nil {
+		return 0, nil, fmt.Errorf("failed to listen: %w", err)
+	}
+	actualPort := listener.Addr().(*net.TCPAddr).Port
+	httpServer := &http.Server{Handler: r}
+	go httpServer.Serve(listener)
+	log.Printf("Started dashboard server on http://localhost:%d", actualPort)
+	return actualPort, httpServer.Shutdown, nil
 }
 
 // ListWorkflows returns available workflow files.
