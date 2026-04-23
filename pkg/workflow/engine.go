@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strconv"
 	"sync"
 	"time"
 
@@ -16,9 +17,11 @@ import (
 
 // StepResult holds the result of a step execution.
 type StepResult struct {
-	StepName string
-	Result   string
-	Error    error
+	StepName    string
+	Result      string
+	BuildNumber int
+	BuildURL    string
+	Error       error
 }
 
 // DisabledSet is a map of itemIndex -> set of disabled stepIndexes.
@@ -35,7 +38,7 @@ func (d DisabledSet) IsDisabled(itemIndex, stepIndex int) bool {
 // WorkflowCallbacks provides hooks into workflow execution for state tracking.
 type WorkflowCallbacks interface {
 	OnStepStart(itemIndex, stepIndex int, name, buildURL string)
-	OnStepComplete(itemIndex, stepIndex int, name, result string, err error)
+	OnStepComplete(itemIndex, stepIndex int, name, result string, buildNumber int, err error)
 	OnStepSkipped(itemIndex, stepIndex int, name string)
 	OnPRWaitStart(itemIndex int, pr *config.PRWait)
 	OnPRWaitProgress(itemIndex int, pr *config.PRWait)
@@ -44,10 +47,28 @@ type WorkflowCallbacks interface {
 	OnPRWaitSkipped(itemIndex int, pr *config.PRWait)
 }
 
+// mergeVars combines workflow inputs with step outputs for substitution.
+// Outputs win on key collision (shouldn't happen in practice — outputs are
+// dotted "steps.x.y" keys while inputs are flat).
+func mergeVars(inputs map[string]string, outputs *Outputs) map[string]string {
+	merged := make(map[string]string, len(inputs))
+	for k, v := range inputs {
+		merged[k] = v
+	}
+	if outputs != nil {
+		for k, v := range outputs.Flat() {
+			merged[k] = v
+		}
+	}
+	return merged
+}
+
 // RunWithCallbacks executes the workflow with callback notifications.
 func RunWithCallbacks(ctx context.Context, cfg *config.Config, l *logger.Logger, callbacks WorkflowCallbacks, disabledSet DisabledSet) error {
 	l.Infof("Starting workflow execution...")
 	start := time.Now()
+
+	outputs := NewOutputs()
 
 	for i, item := range cfg.Workflow {
 		if item.IsPRWait() {
@@ -87,17 +108,26 @@ func RunWithCallbacks(ctx context.Context, cfg *config.Config, l *logger.Logger,
 			}
 			l.Infof("[%d/%d] Starting %s (%d steps)...", i+1, len(cfg.Workflow), groupName, len(item.Parallel.Steps))
 
-			results, err := runParallelGroupWithCallbacks(ctx, cfg, item.Parallel.Steps, i, l, callbacks, disabledSet)
+			results, err := runParallelGroupWithCallbacks(ctx, cfg, item.Parallel.Steps, i, l, callbacks, disabledSet, outputs)
 			if err != nil {
 				return fmt.Errorf("parallel group %q failed: %w", groupName, err)
 			}
 
-			// Log all results
-			for _, r := range results {
+			// Log all results, then publish outputs (post-group: parallel siblings cannot reference each other)
+			for idx, r := range results {
 				if r.Error != nil {
 					log.Printf("  ✗ %s: FAILED - %v", r.StepName, r.Error)
-				} else {
-					log.Printf("  ✓ %s: %s", r.StepName, r.Result)
+					continue
+				}
+				log.Printf("  ✓ %s: %s", r.StepName, r.Result)
+				if r.Result == "SUCCESS" {
+					stepID := item.Parallel.Steps[idx].ResolvedID()
+					if r.BuildNumber > 0 {
+						outputs.Set(stepID, "build_number", strconv.Itoa(r.BuildNumber))
+					}
+					if r.BuildURL != "" {
+						outputs.Set(stepID, "build_url", r.BuildURL)
+					}
 				}
 			}
 
@@ -120,19 +150,28 @@ func RunWithCallbacks(ctx context.Context, cfg *config.Config, l *logger.Logger,
 				callbacks.OnStepStart(i, 0, step.Name, "")
 			}
 
-			result, err := runStep(ctx, cfg, step, l, callbacks, i, 0)
+			result, buildNumber, buildURL, err := runStep(ctx, cfg, step, l, callbacks, i, 0, outputs)
 
 			if callbacks != nil {
-				callbacks.OnStepComplete(i, 0, step.Name, result, err)
+				callbacks.OnStepComplete(i, 0, step.Name, result, buildNumber, err)
 			}
 
 			if err != nil {
 				return fmt.Errorf("step %q failed: %w", step.Name, err)
 			}
 
-			l.Infof("  -> Build finished with result: %s", result)
+			l.Infof("  -> Build finished with result: %s (#%d)", result, buildNumber)
 			if result != "SUCCESS" {
 				return fmt.Errorf("step %q failed with result: %s", step.Name, result)
+			}
+
+			// Publish outputs for downstream substitution.
+			stepID := step.ResolvedID()
+			if buildNumber > 0 {
+				outputs.Set(stepID, "build_number", strconv.Itoa(buildNumber))
+			}
+			if buildURL != "" {
+				outputs.Set(stepID, "build_url", buildURL)
 			}
 
 			l.Infof("[Step %d/%d] Completed successfully.", i+1, len(cfg.Workflow))
@@ -144,31 +183,33 @@ func RunWithCallbacks(ctx context.Context, cfg *config.Config, l *logger.Logger,
 	return nil
 }
 
-// runStep executes a single step and returns the build result.
-func runStep(ctx context.Context, cfg *config.Config, step config.Step, l *logger.Logger, callbacks WorkflowCallbacks, itemIndex, stepIndex int) (string, error) {
+// runStep executes a single step and returns the build result, build number, and build URL.
+// outputs is read for ${steps.<id>.<field>} substitution; callers update it after the call.
+func runStep(ctx context.Context, cfg *config.Config, step config.Step, l *logger.Logger, callbacks WorkflowCallbacks, itemIndex, stepIndex int, outputs *Outputs) (string, int, string, error) {
 	instanceCfg, ok := cfg.Instances[step.Instance]
 	if !ok {
-		return "", fmt.Errorf("unknown instance %q", step.Instance)
+		return "", 0, "", fmt.Errorf("unknown instance %q", step.Instance)
 	}
 
 	token, err := instanceCfg.GetToken()
 	if err != nil {
-		return "", fmt.Errorf("auth error: %w", err)
+		return "", 0, "", fmt.Errorf("auth error: %w", err)
 	}
 
 	client := jenkins.NewClient(instanceCfg.URL, token, l)
 
-	// Prepare params with substitution
+	// Prepare params with substitution (inputs ∪ step outputs).
+	subVars := mergeVars(cfg.Inputs, outputs)
 	jobParams := make(map[string]string)
 	for k, v := range step.Params {
-		jobParams[k] = config.Substitute(v, cfg.Inputs)
+		jobParams[k] = config.Substitute(v, subVars)
 	}
 
 	// 1. Trigger
 	l.Infof("  -> [%s] Triggering job %s", step.Name, step.Job)
 	queueItemURL, err := client.TriggerJob(ctx, step.Job, jobParams)
 	if err != nil {
-		return "", fmt.Errorf("failed to trigger: %w", err)
+		return "", 0, "", fmt.Errorf("failed to trigger: %w", err)
 	}
 	l.Infof("  -> [%s] Queued. Item: %s", step.Name, queueItemURL)
 
@@ -176,7 +217,7 @@ func runStep(ctx context.Context, cfg *config.Config, step config.Step, l *logge
 	l.Infof("  -> [%s] Waiting for queue...", step.Name)
 	buildURL, err := client.WaitForQueue(ctx, queueItemURL)
 	if err != nil {
-		return "", fmt.Errorf("failed waiting for queue: %w", err)
+		return "", 0, "", fmt.Errorf("failed waiting for queue: %w", err)
 	}
 	l.Infof("  -> [%s] Job started: %s", step.Name, buildURL)
 
@@ -186,12 +227,12 @@ func runStep(ctx context.Context, cfg *config.Config, step config.Step, l *logge
 
 	// 3. Wait for Build
 	l.Infof("  -> [%s] Waiting for completion...", step.Name)
-	result, err := client.WaitForBuild(ctx, buildURL)
+	result, buildNumber, err := client.WaitForBuild(ctx, buildURL)
 	if err != nil {
-		return "", fmt.Errorf("failed waiting for build: %w", err)
+		return "", 0, buildURL, fmt.Errorf("failed waiting for build: %w", err)
 	}
 
-	return result, nil
+	return result, buildNumber, buildURL, nil
 }
 
 // runPRWait monitors a GitHub PR until it reaches the target state.
@@ -289,7 +330,10 @@ func describeResolvedPR(pr *config.PRWait) string {
 }
 
 // runParallelGroup executes multiple steps in parallel.
-func runParallelGroup(ctx context.Context, cfg *config.Config, steps []config.Step, l *logger.Logger) ([]StepResult, error) {
+// Parallel siblings cannot reference each other's outputs — pass outputs collected
+// from previous (sequential) steps. Outputs collected here are returned to the caller
+// (see runParallelGroupWithCallbacks for the production path).
+func runParallelGroup(ctx context.Context, cfg *config.Config, steps []config.Step, l *logger.Logger, outputs *Outputs) ([]StepResult, error) {
 	results := make([]StepResult, len(steps))
 	var resultsMu sync.Mutex
 
@@ -298,13 +342,15 @@ func runParallelGroup(ctx context.Context, cfg *config.Config, steps []config.St
 	for i, step := range steps {
 		i, step := i, step // capture loop variables
 		g.Go(func() error {
-			result, err := runStep(gctx, cfg, step, l, nil, 0, i)
+			result, buildNumber, buildURL, err := runStep(gctx, cfg, step, l, nil, 0, i, outputs)
 
 			resultsMu.Lock()
 			results[i] = StepResult{
-				StepName: step.Name,
-				Result:   result,
-				Error:    err,
+				StepName:    step.Name,
+				Result:      result,
+				BuildNumber: buildNumber,
+				BuildURL:    buildURL,
+				Error:       err,
 			}
 			resultsMu.Unlock()
 
@@ -325,7 +371,7 @@ func runParallelGroup(ctx context.Context, cfg *config.Config, steps []config.St
 }
 
 // runParallelGroupWithCallbacks executes multiple steps in parallel with callback notifications.
-func runParallelGroupWithCallbacks(ctx context.Context, cfg *config.Config, steps []config.Step, itemIndex int, l *logger.Logger, callbacks WorkflowCallbacks, disabledSet DisabledSet) ([]StepResult, error) {
+func runParallelGroupWithCallbacks(ctx context.Context, cfg *config.Config, steps []config.Step, itemIndex int, l *logger.Logger, callbacks WorkflowCallbacks, disabledSet DisabledSet, outputs *Outputs) ([]StepResult, error) {
 	results := make([]StepResult, len(steps))
 	var resultsMu sync.Mutex
 
@@ -349,18 +395,20 @@ func runParallelGroupWithCallbacks(ctx context.Context, cfg *config.Config, step
 				callbacks.OnStepStart(itemIndex, i, step.Name, "")
 			}
 
-			result, err := runStep(gctx, cfg, step, l, callbacks, itemIndex, i)
+			result, buildNumber, buildURL, err := runStep(gctx, cfg, step, l, callbacks, itemIndex, i, outputs)
 
 			resultsMu.Lock()
 			results[i] = StepResult{
-				StepName: step.Name,
-				Result:   result,
-				Error:    err,
+				StepName:    step.Name,
+				Result:      result,
+				BuildNumber: buildNumber,
+				BuildURL:    buildURL,
+				Error:       err,
 			}
 			resultsMu.Unlock()
 
 			if callbacks != nil {
-				callbacks.OnStepComplete(itemIndex, i, step.Name, result, err)
+				callbacks.OnStepComplete(itemIndex, i, step.Name, result, buildNumber, err)
 			}
 
 			if err != nil {

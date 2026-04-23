@@ -164,7 +164,8 @@ func (c *Client) WaitForQueue(ctx context.Context, queueItemURL string) (string,
 }
 
 // WaitForBuild waits for the build to complete and returns the Result (e.g., SUCCESS, FAILURE)
-func (c *Client) WaitForBuild(ctx context.Context, buildURL string) (string, error) {
+// along with the Jenkins build number.
+func (c *Client) WaitForBuild(ctx context.Context, buildURL string) (string, int, error) {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
@@ -175,38 +176,39 @@ func (c *Client) WaitForBuild(ctx context.Context, buildURL string) (string, err
 	for {
 		select {
 		case <-ctx.Done():
-			return "", ctx.Err()
+			return "", 0, ctx.Err()
 		case <-ticker.C:
 			req, err := http.NewRequestWithContext(ctx, "GET", buildURL+"api/json", nil)
 			if err != nil {
-				return "", err
+				return "", 0, err
 			}
 			c.addAuth(req)
 
 			resp, err := c.HTTPClient.Do(req)
 			if err != nil {
-				return "", fmt.Errorf("poll build request failed: %w", err)
+				return "", 0, fmt.Errorf("poll build request failed: %w", err)
 			}
 
 			if resp.StatusCode != 200 {
 				body, _ := io.ReadAll(resp.Body)
 				resp.Body.Close()
-				return "", fmt.Errorf("poll build status %d: %s", resp.StatusCode, string(body))
+				return "", 0, fmt.Errorf("poll build status %d: %s", resp.StatusCode, string(body))
 			}
 
 			var result struct {
 				Building bool   `json:"building"`
 				Result   string `json:"result"`
+				Number   int    `json:"number"`
 			}
 
 			if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 				resp.Body.Close()
-				return "", fmt.Errorf("failed to decode build json: %w", err)
+				return "", 0, fmt.Errorf("failed to decode build json: %w", err)
 			}
 			resp.Body.Close()
 
 			if !result.Building {
-				return result.Result, nil
+				return result.Result, result.Number, nil
 			}
 			// Still building...
 		}

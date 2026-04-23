@@ -4,11 +4,22 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
 
-var templateVarRe = regexp.MustCompile(`\$\{(\w+)\}`)
+var templateVarRe = regexp.MustCompile(`\$\{([\w.]+)\}`)
+
+var slugNonAlnumRe = regexp.MustCompile(`[^a-z0-9]+`)
+
+// Slugify converts a name into a stable identifier suitable for ${steps.<id>.<field>}
+// references. Lowercases, replaces non-alphanumeric runs with underscores, trims edges.
+func Slugify(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	s = slugNonAlnumRe.ReplaceAllString(s, "_")
+	return strings.Trim(s, "_")
+}
 
 type Instance struct {
 	URL     string `yaml:"url"`
@@ -18,9 +29,18 @@ type Instance struct {
 
 type Step struct {
 	Name     string            `yaml:"name"`
+	ID       string            `yaml:"id,omitempty"` // Optional explicit ID for ${steps.<id>.<field>} references; defaults to Slugify(Name)
 	Instance string            `yaml:"instance"`
 	Job      string            `yaml:"job"`
 	Params   map[string]string `yaml:"params,omitempty"` // Job parameters
+}
+
+// ResolvedID returns the explicit ID if set, otherwise the slugified Name.
+func (s Step) ResolvedID() string {
+	if s.ID != "" {
+		return s.ID
+	}
+	return Slugify(s.Name)
 }
 
 // GitHubConfig holds global GitHub authentication settings
@@ -70,6 +90,7 @@ type ParallelGroup struct {
 type WorkflowItem struct {
 	// Inline step fields (when not using parallel)
 	Name     string            `yaml:"name,omitempty"`
+	ID       string            `yaml:"id,omitempty"`
 	Instance string            `yaml:"instance,omitempty"`
 	Job      string            `yaml:"job,omitempty"`
 	Params   map[string]string `yaml:"params,omitempty"`
@@ -93,6 +114,7 @@ func (w *WorkflowItem) IsPRWait() bool {
 func (w *WorkflowItem) AsStep() Step {
 	return Step{
 		Name:     w.Name,
+		ID:       w.ID,
 		Instance: w.Instance,
 		Job:      w.Job,
 		Params:   w.Params,
@@ -214,6 +236,7 @@ func (c *Config) validate() error {
 		}
 	}
 
+	seenIDs := map[string]string{} // resolved ID -> location of first occurrence
 	for i, item := range c.Workflow {
 		if item.IsPRWait() {
 			// Validate PR wait
@@ -226,19 +249,40 @@ func (c *Config) validate() error {
 				return fmt.Errorf("workflow item %d: parallel group is empty", i)
 			}
 			for j, step := range item.Parallel.Steps {
-				if err := c.validateStep(step, fmt.Sprintf("parallel[%d].step[%d]", i, j)); err != nil {
+				loc := fmt.Sprintf("parallel[%d].step[%d]", i, j)
+				if err := c.validateStep(step, loc); err != nil {
+					return err
+				}
+				if err := registerStepID(seenIDs, step, loc); err != nil {
 					return err
 				}
 			}
 		} else {
 			// Validate single step
 			step := item.AsStep()
-			if err := c.validateStep(step, fmt.Sprintf("step %d", i)); err != nil {
+			loc := fmt.Sprintf("step %d", i)
+			if err := c.validateStep(step, loc); err != nil {
+				return err
+			}
+			if err := registerStepID(seenIDs, step, loc); err != nil {
 				return err
 			}
 		}
 	}
 
+	return nil
+}
+
+// registerStepID records a step's resolved ID and errors on collision.
+func registerStepID(seen map[string]string, step Step, location string) error {
+	id := step.ResolvedID()
+	if id == "" {
+		return nil // empty name + no explicit id; validateStep already caught the missing name
+	}
+	if prev, exists := seen[id]; exists {
+		return fmt.Errorf("%s (%q): duplicate step id %q (first defined at %s); add an explicit `id:` field to disambiguate", location, step.Name, id, prev)
+	}
+	seen[id] = location
 	return nil
 }
 

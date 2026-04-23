@@ -88,6 +88,7 @@
           :job="item.step?.job"
           :status="item.step?.status || 'pending'"
           :build-url="item.step?.buildUrl"
+          :build-number="item.step?.buildNumber"
           :error="item.step?.error"
           :started-at="item.step?.startedAt"
           :ended-at="item.step?.endedAt"

@@ -338,6 +338,9 @@ components:
           type: string
         buildUrl:
           type: string
+        buildNumber:
+          type: integer
+          description: Jenkins build number captured after the job completes
         usedInputs:
           type: object
           additionalProperties:

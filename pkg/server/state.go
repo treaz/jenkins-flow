@@ -18,16 +18,17 @@ const (
 
 // StepState holds the state of a single step.
 type StepState struct {
-	Name       string            `json:"name"`
-	Instance   string            `json:"instance"`
-	Job        string            `json:"job"`
-	Status     StepStatus        `json:"status"`
-	Result     string            `json:"result,omitempty"`
-	Error      string            `json:"error,omitempty"`
-	StartedAt  *time.Time        `json:"startedAt,omitempty"`
-	EndedAt    *time.Time        `json:"endedAt,omitempty"`
-	BuildURL   string            `json:"buildUrl,omitempty"`
-	UsedInputs map[string]string `json:"usedInputs,omitempty"`
+	Name        string            `json:"name"`
+	Instance    string            `json:"instance"`
+	Job         string            `json:"job"`
+	Status      StepStatus        `json:"status"`
+	Result      string            `json:"result,omitempty"`
+	Error       string            `json:"error,omitempty"`
+	StartedAt   *time.Time        `json:"startedAt,omitempty"`
+	EndedAt     *time.Time        `json:"endedAt,omitempty"`
+	BuildURL    string            `json:"buildUrl,omitempty"`
+	BuildNumber int               `json:"buildNumber,omitempty"`
+	UsedInputs  map[string]string `json:"usedInputs,omitempty"`
 }
 
 // PRWaitState holds the state of a PR wait item.
@@ -122,6 +123,12 @@ func (sm *StateManager) StartWorkflow(name string, inputs map[string]string, ite
 
 // UpdateStepStatus updates the status of a specific step.
 func (sm *StateManager) UpdateStepStatus(itemIndex int, stepIndex int, status StepStatus, result, errMsg, buildURL string) {
+	sm.UpdateStepStatusWithBuild(itemIndex, stepIndex, status, result, errMsg, buildURL, 0)
+}
+
+// UpdateStepStatusWithBuild is like UpdateStepStatus but also records the Jenkins build number.
+// A buildNumber of 0 leaves the existing value unchanged.
+func (sm *StateManager) UpdateStepStatusWithBuild(itemIndex int, stepIndex int, status StepStatus, result, errMsg, buildURL string, buildNumber int) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
@@ -152,6 +159,9 @@ func (sm *StateManager) UpdateStepStatus(itemIndex int, stepIndex int, status St
 		step.BuildURL = ""
 	case buildURL != "":
 		step.BuildURL = buildURL
+	}
+	if buildNumber > 0 {
+		step.BuildNumber = buildNumber
 	}
 
 	if status == StatusRunning && step.StartedAt == nil {

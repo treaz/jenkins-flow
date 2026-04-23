@@ -223,6 +223,80 @@ func TestValidatePRWait_MissingIdentifiers(t *testing.T) {
 	}
 }
 
+func TestSlugify(t *testing.T) {
+	cases := map[string]string{
+		"Build NOS Docker Image": "build_nos_docker_image",
+		"  Deploy NOS US  ":      "deploy_nos_us",
+		"deploy/nos.us":          "deploy_nos_us",
+		"___trim___":             "trim",
+		"":                       "",
+	}
+	for in, want := range cases {
+		if got := Slugify(in); got != want {
+			t.Errorf("Slugify(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestStep_ResolvedID(t *testing.T) {
+	if got := (Step{Name: "Build NOS"}).ResolvedID(); got != "build_nos" {
+		t.Errorf("expected slug from name, got %q", got)
+	}
+	if got := (Step{Name: "Build NOS", ID: "explicit_id"}).ResolvedID(); got != "explicit_id" {
+		t.Errorf("expected explicit id, got %q", got)
+	}
+}
+
+func TestSubstitute_DottedKey(t *testing.T) {
+	vars := map[string]string{
+		"git_branch":               "main",
+		"steps.build_nos.build_number": "1234",
+	}
+	got := Substitute("tag=${steps.build_nos.build_number} branch=${git_branch}", vars)
+	want := "tag=1234 branch=main"
+	if got != want {
+		t.Errorf("Substitute returned %q, want %q", got, want)
+	}
+
+	// Missing dotted key resolves to empty string (existing behavior).
+	if got := Substitute("x=${steps.missing.field}", vars); got != "x=" {
+		t.Errorf("missing key: got %q, want %q", got, "x=")
+	}
+}
+
+func TestFindTemplateVars_DottedKey(t *testing.T) {
+	got := FindTemplateVars("a=${flat} b=${steps.build_nos.build_number}")
+	if len(got) != 2 || got[0] != "flat" || got[1] != "steps.build_nos.build_number" {
+		t.Errorf("FindTemplateVars returned %v", got)
+	}
+}
+
+func TestValidate_DuplicateStepID(t *testing.T) {
+	cfg := &Config{
+		Instances: map[string]Instance{"local": {URL: "http://x", Token: "t"}},
+		Workflow: []WorkflowItem{
+			{Name: "Build NOS", Instance: "local", Job: "/job/a"},
+			{Name: "Build NOS", Instance: "local", Job: "/job/b"},
+		},
+	}
+	if err := cfg.validate(); err == nil {
+		t.Fatal("expected duplicate-id validation error, got nil")
+	}
+}
+
+func TestValidate_DuplicateStepID_ResolvedByExplicitID(t *testing.T) {
+	cfg := &Config{
+		Instances: map[string]Instance{"local": {URL: "http://x", Token: "t"}},
+		Workflow: []WorkflowItem{
+			{Name: "Build NOS", Instance: "local", Job: "/job/a"},
+			{Name: "Build NOS", ID: "build_nos_2", Instance: "local", Job: "/job/b"},
+		},
+	}
+	if err := cfg.validate(); err != nil {
+		t.Fatalf("unexpected error with disambiguating id: %v", err)
+	}
+}
+
 func TestParseWorkflowMeta(t *testing.T) {
 	name, err := ParseWorkflowMeta(td("workflow_meta.yaml"))
 	if err != nil {

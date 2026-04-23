@@ -31,7 +31,9 @@
     </div>
 
     <div v-if="buildUrl" class="build-link">
-      <a :href="buildUrl" target="_blank" rel="noopener">{{ buildUrl }}</a>
+      <a :href="buildUrl" target="_blank" rel="noopener">
+        {{ buildUrl }}<span v-if="buildNumber" class="build-number"> #{{ buildNumber }}</span>
+      </a>
     </div>
 
     <div v-if="error" class="error-message">
@@ -52,6 +54,7 @@
         :job="step.job"
         :status="step.status"
         :build-url="step.buildUrl"
+        :build-number="step.buildNumber"
         :error="step.error"
         :started-at="step.startedAt"
         :ended-at="step.endedAt"
@@ -74,6 +77,7 @@ const props = defineProps({
   job: String,
   status: { type: String, required: true },
   buildUrl: String,
+  buildNumber: { type: Number, default: 0 },
   error: String,
   startedAt: String,
   endedAt: String,
@@ -210,6 +214,13 @@ const statusLinkProps = computed(() => {
 
 .build-link a:hover {
   text-decoration: underline;
+}
+
+.build-number {
+  margin-left: 6px;
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-family: monospace;
 }
 
 .error-message {

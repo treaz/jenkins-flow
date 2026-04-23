@@ -828,6 +828,9 @@ func (s *Server) internalStepToAPI(step *StepState) *api.StepState {
 		Error:    strPtr(step.Error),
 		BuildUrl: strPtr(step.BuildURL),
 	}
+	if step.BuildNumber > 0 {
+		result.BuildNumber = intPtr(step.BuildNumber)
+	}
 	if len(step.UsedInputs) > 0 {
 		m := make(map[string]string, len(step.UsedInputs))
 		for k, v := range step.UsedInputs {
@@ -876,7 +879,7 @@ func (c *workflowCallbacks) OnStepStart(itemIndex, stepIndex int, name, buildURL
 	c.state.UpdateStepStatus(itemIndex, stepIndex, StatusRunning, "", "", buildURL)
 }
 
-func (c *workflowCallbacks) OnStepComplete(itemIndex, stepIndex int, name, result string, err error) {
+func (c *workflowCallbacks) OnStepComplete(itemIndex, stepIndex int, name, result string, buildNumber int, err error) {
 	errMsg := ""
 	status := StatusSuccess
 	if err != nil {
@@ -885,7 +888,7 @@ func (c *workflowCallbacks) OnStepComplete(itemIndex, stepIndex int, name, resul
 	} else if result != "SUCCESS" {
 		status = StatusFailed
 	}
-	c.state.UpdateStepStatus(itemIndex, stepIndex, status, result, errMsg, "")
+	c.state.UpdateStepStatusWithBuild(itemIndex, stepIndex, status, result, errMsg, "", buildNumber)
 }
 
 func (c *workflowCallbacks) OnStepSkipped(itemIndex, stepIndex int, name string) {
