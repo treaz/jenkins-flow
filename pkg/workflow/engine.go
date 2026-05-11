@@ -288,7 +288,7 @@ func runPRWait(ctx context.Context, cfg *config.Config, pr *config.PRWait, l *lo
 		}
 	}
 
-	finalStatus, err := client.WaitForPRStatus(ctx, pr.Owner, pr.Repo, prNumber, pr.WaitFor, pollInterval)
+	finalStatus, err := client.WaitForPRStatus(ctx, pr.Owner, pr.Repo, prNumber, pr.WaitFor, pollInterval, pr.ShouldAutoUpdate())
 	if err != nil {
 		return err
 	}

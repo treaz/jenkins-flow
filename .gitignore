@@ -3,3 +3,4 @@ instances.yaml
 /workflows/
 pkg/server/static/*
 !pkg/server/static/.gitkeep
+ci-debug-*/

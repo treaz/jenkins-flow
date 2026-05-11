@@ -42,29 +42,32 @@ type LogLevelRequest struct {
 
 // PRWaitOverride defines model for PRWaitOverride.
 type PRWaitOverride struct {
-	HeadBranch *string `json:"headBranch,omitempty"`
-	ItemIndex  *int    `json:"itemIndex,omitempty"`
-	Owner      *string `json:"owner,omitempty"`
-	PollSecs   *int    `json:"pollSecs,omitempty"`
-	PrNumber   *int    `json:"prNumber,omitempty"`
-	Repo       *string `json:"repo,omitempty"`
-	WaitFor    *string `json:"waitFor,omitempty"`
+	// AutoUpdateBranch When true (default), the head branch is auto-merged from base when the PR is behind. Failure aborts the wait.
+	AutoUpdateBranch *bool   `json:"autoUpdateBranch,omitempty"`
+	HeadBranch       *string `json:"headBranch,omitempty"`
+	ItemIndex        *int    `json:"itemIndex,omitempty"`
+	Owner            *string `json:"owner,omitempty"`
+	PollSecs         *int    `json:"pollSecs,omitempty"`
+	PrNumber         *int    `json:"prNumber,omitempty"`
+	Repo             *string `json:"repo,omitempty"`
+	WaitFor          *string `json:"waitFor,omitempty"`
 }
 
 // PRWaitState defines model for PRWaitState.
 type PRWaitState struct {
-	EndedAt    *time.Time `json:"endedAt,omitempty"`
-	Error      *string    `json:"error,omitempty"`
-	HeadBranch *string    `json:"headBranch,omitempty"`
-	HtmlUrl    *string    `json:"htmlUrl,omitempty"`
-	Name       *string    `json:"name,omitempty"`
-	Owner      *string    `json:"owner,omitempty"`
-	PrNumber   *int       `json:"prNumber,omitempty"`
-	Repo       *string    `json:"repo,omitempty"`
-	StartedAt  *time.Time `json:"startedAt,omitempty"`
-	Status     *string    `json:"status,omitempty"`
-	Title      *string    `json:"title,omitempty"`
-	WaitFor    *string    `json:"waitFor,omitempty"`
+	AutoUpdateBranch *bool      `json:"autoUpdateBranch,omitempty"`
+	EndedAt          *time.Time `json:"endedAt,omitempty"`
+	Error            *string    `json:"error,omitempty"`
+	HeadBranch       *string    `json:"headBranch,omitempty"`
+	HtmlUrl          *string    `json:"htmlUrl,omitempty"`
+	Name             *string    `json:"name,omitempty"`
+	Owner            *string    `json:"owner,omitempty"`
+	PrNumber         *int       `json:"prNumber,omitempty"`
+	Repo             *string    `json:"repo,omitempty"`
+	StartedAt        *time.Time `json:"startedAt,omitempty"`
+	Status           *string    `json:"status,omitempty"`
+	Title            *string    `json:"title,omitempty"`
+	WaitFor          *string    `json:"waitFor,omitempty"`
 }
 
 // ParallelGroupState defines model for ParallelGroupState.

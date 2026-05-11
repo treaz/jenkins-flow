@@ -68,6 +68,7 @@
           :head-branch="item.prWait?.headBranch"
           :pr-number="item.prWait?.prNumber"
           :wait-for="item.prWait?.waitFor"
+          :auto-update-branch="item.prWait?.autoUpdateBranch !== false"
           :status="item.prWait?.status || 'pending'"
           :html-url="item.prWait?.htmlUrl"
           :pr-title="item.prWait?.title"

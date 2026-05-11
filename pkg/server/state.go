@@ -33,18 +33,19 @@ type StepState struct {
 
 // PRWaitState holds the state of a PR wait item.
 type PRWaitState struct {
-	Name       string     `json:"name"`
-	Owner      string     `json:"owner"`
-	Repo       string     `json:"repo"`
-	HeadBranch string     `json:"headBranch,omitempty"`
-	PRNumber   int        `json:"prNumber,omitempty"`
-	WaitFor    string     `json:"waitFor"`
-	Status     StepStatus `json:"status"`
-	Error      string     `json:"error,omitempty"`
-	StartedAt  *time.Time `json:"startedAt,omitempty"`
-	EndedAt    *time.Time `json:"endedAt,omitempty"`
-	HTMLURL    string     `json:"htmlUrl,omitempty"`
-	Title      string     `json:"title,omitempty"`
+	Name             string     `json:"name"`
+	Owner            string     `json:"owner"`
+	Repo             string     `json:"repo"`
+	HeadBranch       string     `json:"headBranch,omitempty"`
+	PRNumber         int        `json:"prNumber,omitempty"`
+	WaitFor          string     `json:"waitFor"`
+	AutoUpdateBranch bool       `json:"autoUpdateBranch"`
+	Status           StepStatus `json:"status"`
+	Error            string     `json:"error,omitempty"`
+	StartedAt        *time.Time `json:"startedAt,omitempty"`
+	EndedAt          *time.Time `json:"endedAt,omitempty"`
+	HTMLURL          string     `json:"htmlUrl,omitempty"`
+	Title            string     `json:"title,omitempty"`
 }
 
 // ParallelGroupState holds the state of a parallel execution group.

@@ -310,3 +310,35 @@ func TestParseWorkflowMeta(t *testing.T) {
 		t.Error("expected error for missing name, got nil")
 	}
 }
+
+func TestPRWaitShouldAutoUpdate(t *testing.T) {
+	t.Run("nil receiver", func(t *testing.T) {
+		var p *PRWait
+		if !p.ShouldAutoUpdate() {
+			t.Fatal("nil PRWait should default to auto-update on")
+		}
+	})
+
+	t.Run("unset (nil pointer) defaults true", func(t *testing.T) {
+		p := &PRWait{}
+		if !p.ShouldAutoUpdate() {
+			t.Fatal("unset AutoUpdateBranch should default to true")
+		}
+	})
+
+	t.Run("explicit false", func(t *testing.T) {
+		f := false
+		p := &PRWait{AutoUpdateBranch: &f}
+		if p.ShouldAutoUpdate() {
+			t.Fatal("explicit false should disable auto-update")
+		}
+	})
+
+	t.Run("explicit true", func(t *testing.T) {
+		v := true
+		p := &PRWait{AutoUpdateBranch: &v}
+		if !p.ShouldAutoUpdate() {
+			t.Fatal("explicit true should enable auto-update")
+		}
+	})
+}

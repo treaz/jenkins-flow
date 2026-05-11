@@ -398,6 +398,10 @@ func (s *Server) RunWorkflow(w http.ResponseWriter, r *http.Request) {
 			if ov.PollSecs != nil {
 				pr.PollSecs = *ov.PollSecs
 			}
+			if ov.AutoUpdateBranch != nil {
+				v := *ov.AutoUpdateBranch
+				pr.AutoUpdateBranch = &v
+			}
 		}
 	}
 
@@ -593,15 +597,16 @@ func (s *Server) configToStateItems(cfg *config.Config) []WorkflowItemState {
 				IsParallel: false,
 				IsPRWait:   true,
 				PRWait: &PRWaitState{
-					Name:       pr.Name,
-					Owner:      pr.Owner,
-					Repo:       pr.Repo,
-					HeadBranch: pr.HeadBranch,
-					PRNumber:   pr.PRNumber,
-					WaitFor:    pr.WaitFor,
-					Status:     StatusPending,
-					HTMLURL:    htmlURL,
-					Title:      pr.ResolvedTitle,
+					Name:             pr.Name,
+					Owner:            pr.Owner,
+					Repo:             pr.Repo,
+					HeadBranch:       pr.HeadBranch,
+					PRNumber:         pr.PRNumber,
+					WaitFor:          pr.WaitFor,
+					AutoUpdateBranch: pr.ShouldAutoUpdate(),
+					Status:           StatusPending,
+					HTMLURL:          htmlURL,
+					Title:            pr.ResolvedTitle,
 				},
 			}
 		} else {
@@ -857,16 +862,18 @@ func (s *Server) internalParallelToAPI(p *ParallelGroupState) *api.ParallelGroup
 
 func (s *Server) internalPRWaitToAPI(pr *PRWaitState) *api.PRWaitState {
 	st := string(pr.Status)
+	auto := pr.AutoUpdateBranch
 	return &api.PRWaitState{
-		Name:       strPtr(pr.Name),
-		Owner:      strPtr(pr.Owner),
-		Repo:       strPtr(pr.Repo),
-		HeadBranch: strPtr(pr.HeadBranch),
-		PrNumber:   intPtr(pr.PRNumber),
-		WaitFor:    strPtr(pr.WaitFor),
-		Status:     strPtr(st),
-		HtmlUrl:    strPtr(pr.HTMLURL),
-		Title:      strPtr(pr.Title),
+		Name:             strPtr(pr.Name),
+		Owner:            strPtr(pr.Owner),
+		Repo:             strPtr(pr.Repo),
+		HeadBranch:       strPtr(pr.HeadBranch),
+		PrNumber:         intPtr(pr.PRNumber),
+		WaitFor:          strPtr(pr.WaitFor),
+		AutoUpdateBranch: &auto,
+		Status:           strPtr(st),
+		HtmlUrl:          strPtr(pr.HTMLURL),
+		Title:            strPtr(pr.Title),
 	}
 }
 

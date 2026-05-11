@@ -39,6 +39,16 @@
               </select>
             </div>
           </div>
+          <div class="pr-input-row">
+            <label class="pr-checkbox">
+              <input
+                type="checkbox"
+                :checked="localAutoUpdateBranch"
+                @change="updateField('autoUpdateBranch', $event.target.checked)"
+              />
+              <span>Auto-update branch from base when behind</span>
+            </label>
+          </div>
         </div>
 
         <!-- Read-only mode: display metadata -->
@@ -82,6 +92,7 @@ const props = defineProps({
   headBranch: { type: String, default: '' },
   prNumber: { type: Number, default: 0 },
   waitFor: { type: String, default: '' },
+  autoUpdateBranch: { type: Boolean, default: true },
   status: { type: String, required: true },
   htmlUrl: { type: String, default: '' },
   prTitle: { type: String, default: '' },
@@ -102,14 +113,16 @@ const localRepo = ref(props.repo)
 const localHeadBranch = ref(props.headBranch)
 const localPrNumber = ref(props.prNumber)
 const localWaitFor = ref(props.waitFor)
+const localAutoUpdateBranch = ref(props.autoUpdateBranch)
 
 // Reset local state when props change (e.g. workflow selection changes)
-watch(() => [props.owner, props.repo, props.headBranch, props.prNumber, props.waitFor], () => {
+watch(() => [props.owner, props.repo, props.headBranch, props.prNumber, props.waitFor, props.autoUpdateBranch], () => {
   localOwner.value = props.owner
   localRepo.value = props.repo
   localHeadBranch.value = props.headBranch
   localPrNumber.value = props.prNumber
   localWaitFor.value = props.waitFor
+  localAutoUpdateBranch.value = props.autoUpdateBranch
 })
 
 const updateField = (field, value) => {
@@ -119,6 +132,7 @@ const updateField = (field, value) => {
     case 'headBranch': localHeadBranch.value = value; break
     case 'prNumber': localPrNumber.value = value; break
     case 'waitFor': localWaitFor.value = value; break
+    case 'autoUpdateBranch': localAutoUpdateBranch.value = value; break
   }
   emit('update:prWait', {
     itemIndex: props.itemIndex,
@@ -126,7 +140,8 @@ const updateField = (field, value) => {
     repo: localRepo.value,
     headBranch: localHeadBranch.value,
     prNumber: localPrNumber.value,
-    waitFor: localWaitFor.value
+    waitFor: localWaitFor.value,
+    autoUpdateBranch: localAutoUpdateBranch.value
   })
 }
 
@@ -287,6 +302,21 @@ const duration = computed(() => {
 }
 
 select.pr-input-field {
+  cursor: pointer;
+}
+
+.pr-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.pr-checkbox input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
   cursor: pointer;
 }
 

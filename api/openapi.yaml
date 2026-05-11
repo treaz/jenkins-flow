@@ -276,6 +276,9 @@ components:
           type: string
         pollSecs:
           type: integer
+        autoUpdateBranch:
+          type: boolean
+          description: When true (default), the head branch is auto-merged from base when the PR is behind. Failure aborts the wait.
 
     DisabledStep:
       type: object
@@ -374,6 +377,8 @@ components:
           type: integer
         waitFor:
           type: string
+        autoUpdateBranch:
+          type: boolean
         status:
           type: string
         error:

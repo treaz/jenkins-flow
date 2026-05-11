@@ -129,6 +129,24 @@ Read these before:
 - Modifying the OpenAPI spec or domain model
 - Altering core business logic in `pkg/workflow/` or `pkg/server/`
 
+### Adding a wire-exposed field to a workflow state struct
+
+A field surfaced through the API (e.g. `PRWaitState.autoUpdateBranch`) must be added in **five** places:
+
+1. `api/openapi.yaml` — schema (`PRWaitState`, `PRWaitOverride`, etc.)
+2. `pkg/api/server.gen.go` — regenerate via `make generate-api` (or hand-patch the type when the binary isn't installed; spec drift is safe at runtime since chi has no request-validation middleware)
+3. `pkg/server/state.go` — internal `*State` struct that holds the field on the server
+4. `pkg/server/server.go` `internalPRWaitToAPI` (or analog) — internal → wire mapper
+5. `pkg/server/server.go` `configToStateItems` — populator copying from `config.PRWait` into the state struct
+
+If the field is overridable per-run, also extend the loop at `pkg/server/server.go` ~L363 (`req.PrWaitOverrides`) — that's the only place override fields are applied to `cfg.Workflow`.
+
+The Vue layer needs `web/src/components/PRWaitCard.vue` (prop + emit) and `web/src/components/WorkflowView.vue` (template binding). `web/src/api/client.js` forwards `prWaitOverrides` verbatim — no change needed there.
+
+### Default-on optional config flags
+
+For YAML config flags that should default to **true** but allow explicit opt-out, use `*bool` + a `Should…()` helper (nil → true). Example: `config.PRWait.AutoUpdateBranch *bool` + `(*PRWait).ShouldAutoUpdate()`. Distinguishes "unset" from "explicit false" so YAML omission doesn't silently disable behavior.
+
 ## Key Conventions
 
 - **Package layout**: `cmd/` for entry points (`jenkins-flow`, `mock-jenkins`); `pkg/` for library code (`api`, `config`, `database`, `github`, `jenkins`, `logger`, `notifier`, `server`, `settings`, `workflow`); `api/` for OpenAPI spec; `web/` for Vue frontend; `workflows/` and `examples/` for workflow YAML definitions.

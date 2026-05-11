@@ -38,13 +38,14 @@ func NewClient(token string, l *logger.Logger) *Client {
 
 // PRStatus represents the state of a Pull Request
 type PRStatus struct {
-	Number   int        `json:"number"`
-	State    string     `json:"state"` // "open", "closed"
-	Merged   bool       `json:"merged"`
-	MergedAt *time.Time `json:"merged_at,omitempty"`
-	Title    string     `json:"title"`
-	HTMLURL  string     `json:"html_url"`
-	Head     struct {
+	Number         int        `json:"number"`
+	State          string     `json:"state"` // "open", "closed"
+	Merged         bool       `json:"merged"`
+	MergedAt       *time.Time `json:"merged_at,omitempty"`
+	Title          string     `json:"title"`
+	HTMLURL        string     `json:"html_url"`
+	MergeableState string     `json:"mergeable_state"` // "clean", "behind", "blocked", "dirty", "unstable", "unknown"
+	Head           struct {
 		Ref string `json:"ref"`
 	} `json:"head"`
 }
@@ -138,9 +139,46 @@ func (c *Client) FindPRByBranch(ctx context.Context, owner, repo, branch string)
 	}
 }
 
+// UpdateBranch triggers a server-side merge of the PR's base branch into its head branch.
+// Uses GitHub's default merge strategy (no rebase). The endpoint returns 202 Accepted on success.
+// 422 is treated as a no-op (head already up to date).
+func (c *Client) UpdateBranch(ctx context.Context, owner, repo string, prNumber int) error {
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/pulls/%d/update-branch", owner, repo, prNumber)
+
+	req, err := http.NewRequestWithContext(ctx, "PUT", url, strings.NewReader("{}"))
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+	req.Header.Set("Content-Type", "application/json")
+	if c.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.Token)
+	}
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("update-branch request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusAccepted:
+		return nil
+	case http.StatusUnprocessableEntity:
+		// 422: branch already up to date — treat as no-op
+		return nil
+	default:
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("update-branch failed (status %d): %s", resp.StatusCode, string(body))
+	}
+}
+
 // WaitForPRStatus polls until the PR reaches the target state and returns the final PR status.
-// Supported target states: "merged", "closed"
-func (c *Client) WaitForPRStatus(ctx context.Context, owner, repo string, prNumber int, targetState string, pollInterval time.Duration) (*PRStatus, error) {
+// Supported target states: "merged", "closed".
+// When autoUpdateBranch is true and target is "merged", the head branch is auto-updated
+// from the base whenever the PR is detected as "behind". An update failure aborts the wait.
+func (c *Client) WaitForPRStatus(ctx context.Context, owner, repo string, prNumber int, targetState string, pollInterval time.Duration, autoUpdateBranch bool) (*PRStatus, error) {
 	if pollInterval == 0 {
 		pollInterval = defaultPollInterval
 	}
@@ -149,7 +187,7 @@ func (c *Client) WaitForPRStatus(ctx context.Context, owner, repo string, prNumb
 	defer ticker.Stop()
 
 	// Check immediately first
-	if done, pr, err := c.checkPRState(ctx, owner, repo, prNumber, targetState); err != nil {
+	if done, pr, err := c.checkPRState(ctx, owner, repo, prNumber, targetState, autoUpdateBranch); err != nil {
 		return nil, err
 	} else if done {
 		return pr, nil
@@ -160,7 +198,7 @@ func (c *Client) WaitForPRStatus(ctx context.Context, owner, repo string, prNumb
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-ticker.C:
-			done, pr, err := c.checkPRState(ctx, owner, repo, prNumber, targetState)
+			done, pr, err := c.checkPRState(ctx, owner, repo, prNumber, targetState, autoUpdateBranch)
 			if err != nil {
 				return nil, err
 			}
@@ -172,11 +210,20 @@ func (c *Client) WaitForPRStatus(ctx context.Context, owner, repo string, prNumb
 	}
 }
 
-// checkPRState checks if PR has reached target state
-func (c *Client) checkPRState(ctx context.Context, owner, repo string, prNumber int, targetState string) (bool, *PRStatus, error) {
+// checkPRState checks if PR has reached target state.
+// If autoUpdateBranch is true and the PR is behind base, triggers update-branch first.
+func (c *Client) checkPRState(ctx context.Context, owner, repo string, prNumber int, targetState string, autoUpdateBranch bool) (bool, *PRStatus, error) {
 	pr, err := c.GetPRStatus(ctx, owner, repo, prNumber)
 	if err != nil {
 		return false, nil, err
+	}
+
+	if autoUpdateBranch && targetState == "merged" && pr.State == "open" && pr.MergeableState == "behind" {
+		c.Logger.Infof("  -> PR #%d is behind base, auto-updating branch...", prNumber)
+		if err := c.UpdateBranch(ctx, owner, repo, prNumber); err != nil {
+			return false, pr, fmt.Errorf("auto-update of PR #%d branch failed: %w", prNumber, err)
+		}
+		c.Logger.Infof("  -> PR #%d branch update accepted", prNumber)
 	}
 
 	switch targetState {
