@@ -9,7 +9,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.44
 	github.com/oapi-codegen/runtime v1.4.1
 	github.com/wailsapp/wails/v2 v2.12.0
-	golang.org/x/sync v0.20.0
+	golang.org/x/sync v0.21.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
