@@ -8,7 +8,7 @@ require (
 	github.com/golang-migrate/migrate/v4 v4.20.1
 	github.com/mattn/go-sqlite3 v1.14.52
 	github.com/oapi-codegen/runtime v1.7.0
-	github.com/wailsapp/wails/v2 v2.17.0
+	github.com/wailsapp/wails/v2 v2.17.1
 	golang.org/x/sync v0.25.0
 	gopkg.in/yaml.v3 v3.0.1
 )
