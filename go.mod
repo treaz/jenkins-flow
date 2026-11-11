@@ -6,7 +6,7 @@ require (
 	github.com/getkin/kin-openapi v0.153.0
 	github.com/go-chi/chi/v5 v5.5.0
 	github.com/golang-migrate/migrate/v4 v4.20.1
-	github.com/mattn/go-sqlite3 v1.14.52
+	github.com/mattn/go-sqlite3 v1.14.53
 	github.com/oapi-codegen/runtime v1.8.0
 	github.com/wailsapp/wails/v2 v2.17.1
 	golang.org/x/sync v0.25.0
